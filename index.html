@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>無盡爬塔：深淵傳說</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="setup-screen" class="full-screen-overlay">
+      <div class="setup-content">
+        <h2>創建你的角色</h2>
+        <div class="setup-group">
+          <h3>選擇種族</h3>
+          <div id="race-options" class="options-grid"></div>
+        </div>
+        <div class="setup-group">
+          <h3>選擇職業</h3>
+          <div id="class-options" class="options-grid"></div>
+        </div>
+        <div id="setup-desc" class="info-box">請選擇種族與職業...</div>
+        <button id="btn-start-game" class="btn-large" disabled>開始冒險</button>
+        <button
+          id="btn-load-game"
+          class="btn-secondary"
+          style="margin-top: 10px; display: none"
+        >
+          讀取進度
+        </button>
+      </div>
+    </div>
+
+    <div id="app" style="display: none">
+      <section id="player-panel">
+        <div class="panel-header">狀態</div>
+        <div class="player-summary">
+          <div id="header-name" class="player-name">勇者</div>
+          <div class="player-identity">
+            <span id="player-race" style="display: none"></span>
+            <span id="player-class" style="display: none"></span>
+          </div>
+          <div class="player-level">
+            <span id="header-depth">F: 0</span> |
+            <span id="header-biome">平原</span>
+          </div>
+          <div id="header-gold" class="gold-text">💰 0</div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-row">
+            <span>HP</span> <span id="stat-hp">100/100</span>
+          </div>
+          <div class="stat-row">
+            <span>攻擊</span> <span id="stat-atk">10</span>
+          </div>
+          <div class="stat-row">
+            <span>速度</span> <span id="stat-spd">100</span>
+          </div>
+          <div class="stat-row">
+            <span>暴擊</span> <span id="stat-crit">5%</span>
+          </div>
+          <div class="stat-row">
+            <span>防禦</span> <span id="stat-def">0%</span>
+          </div>
+          <div
+            class="stat-row"
+            id="stat-sanity-row"
+            style="display: none; color: #b39ddb"
+          >
+            <span>理智</span> <span id="stat-sanity">100</span>
+          </div>
+          <div
+            class="stat-row"
+            id="stat-karma-row"
+            style="display: none; color: #ff5252"
+          >
+            <span>業力</span> <span id="stat-karma">0</span>
+          </div>
+        </div>
+
+        <div class="equipment-mini-grid">
+          <div class="mini-slot" data-slot="weapon">⚔️</div>
+          <div class="mini-slot" data-slot="armor_upper">👕</div>
+          <div class="mini-slot" data-slot="armor_lower">👖</div>
+          <div class="mini-slot" data-slot="acc1">💍</div>
+          <div class="mini-slot" data-slot="acc2">💍</div>
+          <div class="mini-slot" data-slot="acc3">💍</div>
+        </div>
+        <div id="active-sets" class="set-bonus-list"></div>
+      </section>
+
+      <section id="main-panel">
+        <div id="event-screen" class="game-stage">
+          <div class="event-card">
+            <div class="event-visual">
+              <div id="event-icon" class="big-icon">🌲</div>
+            </div>
+            <h2 id="event-title" class="event-title">事件標題</h2>
+            <div id="event-desc" class="event-desc">事件描述...</div>
+
+            <div class="controls">
+              <button id="btn-event-main" class="btn-primary">主要行動</button>
+              <button
+                id="btn-event-sub"
+                class="btn-secondary"
+                style="display: none"
+              >
+                次要行動
+              </button>
+            </div>
+            <div id="event-content" style="margin-top: 20px; width: 100%"></div>
+          </div>
+        </div>
+
+        <div id="combat-screen" class="game-stage" style="display: none">
+          <div class="combat-container">
+            <div class="combat-unit enemy" id="unit-enemy">
+              <div class="unit-icon" id="enemy-icon">👹</div>
+              <div class="unit-info">
+                <div class="unit-name" id="enemy-name">敵人</div>
+                <div class="bar-container">
+                  <div id="enemy-hp-bar" class="bar-fill hp-fill"></div>
+                  <span id="enemy-hp-text" class="bar-text">100/100</span>
+                </div>
+                <div class="bar-container ap-container">
+                  <div id="enemy-ap-bar" class="bar-fill ap-fill"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="vs-divider">VS</div>
+
+            <div class="combat-unit player" id="unit-player">
+              <div class="unit-icon" id="player-icon">🛡️</div>
+              <div class="unit-info">
+                <div class="unit-name" id="player-name-combat">玩家</div>
+                <div class="bar-container">
+                  <div id="player-hp-bar" class="bar-fill hp-fill"></div>
+                  <span id="player-hp-text" class="bar-text">100/100</span>
+                </div>
+                <div class="bar-container ap-container">
+                  <div id="player-ap-bar" class="bar-fill ap-player-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="combat-log" class="log-box"></div>
+
+          <div class="combat-controls">
+            <div
+              class="combat-status"
+              style="
+                color: #888;
+                font-size: 0.9em;
+                display: flex;
+                align-items: center;
+              "
+            >
+              ⚡ 自動戰鬥進行中...
+            </div>
+            <div class="combat-btns">
+              <button id="btn-combat-escape" class="btn-secondary">
+                🏃 逃跑
+              </button>
+              <button id="btn-combat-skip" class="btn-primary">
+                ⏩ 跳過動畫
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="action-panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="inventory">🎒 背包</button>
+          <button class="tab-btn" data-tab="crafting">🔨 合成</button>
+          <button class="tab-btn" data-tab="compendium">📚 圖鑑</button>
+          <button class="tab-btn" data-tab="system">⚙️ 系統</button>
+        </div>
+
+        <div class="tab-content">
+          <div id="tab-crafting" class="tab-pane">
+            <div id="recipe-list" class="inventory-list compact"></div>
+          </div>
+
+          <div id="tab-inventory" class="tab-pane active">
+            <div class="inv-filters">
+              <button
+                class="filter-btn active"
+                onclick="Inventory.render('all')"
+              >
+                全部
+              </button>
+              <button class="filter-btn" onclick="Inventory.render('equip')">
+                裝備
+              </button>
+              <button class="filter-btn" onclick="Inventory.render('mat')">
+                道具
+              </button>
+            </div>
+            <div class="info-box small" id="inv-count">0 | ✨0</div>
+            <div id="inventory-list" class="inventory-list compact"></div>
+          </div>
+
+          <div id="tab-compendium" class="tab-pane">
+            <div class="info-box small">收集紀錄</div>
+            <div id="compendium-list" class="inventory-list compact"></div>
+          </div>
+
+          <div id="tab-system" class="tab-pane">
+            <div class="system-group">
+              <button
+                class="btn-primary"
+                onclick="StorageSystem.saveGame(true)"
+              >
+                手動存檔
+              </button>
+              <button class="btn-danger" onclick="StorageSystem.hardReset()">
+                ⚠️ 重置進度
+              </button>
+            </div>
+            <hr />
+            <textarea
+              id="save-code-area"
+              rows="3"
+              placeholder="存檔代碼..."
+            ></textarea>
+            <div class="system-group">
+              <button onclick="StorageSystem.exportSave()">匯出</button>
+              <button onclick="StorageSystem.importSave()">匯入</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast-container"></div>
+    <div id="custom-modal" class="modal-overlay" style="display: none">
+      <div class="modal-content">
+        <h3 id="modal-title">確認</h3>
+        <p id="modal-text">Text</p>
+        <div class="modal-actions">
+          <button id="modal-btn-no" class="btn-secondary">取消</button>
+          <button id="modal-btn-yes" class="btn-primary">確定</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="core.js"></script>
+    <script src="combat.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
