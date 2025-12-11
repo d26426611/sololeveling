@@ -1,8 +1,6 @@
-/* core.js - 核心系統與數據管理 (自動戰鬥適配版) */
+/* core.js - 核心與存檔管理 (防呆修復版) */
 
-/* UI 工具組 */
 const UI = {
-  // 顯示浮動提示 (Toast)
   toast(msg, type = "info") {
     const c = document.getElementById("toast-container");
     if (!c) return;
@@ -10,8 +8,6 @@ const UI = {
     d.className = `toast ${type}`;
     d.innerHTML = msg;
     c.appendChild(d);
-
-    // 動畫與移除
     setTimeout(() => {
       d.style.opacity = "0";
       d.style.transform = "translateY(-10px)";
@@ -19,45 +15,9 @@ const UI = {
     }, 2000);
   },
 
-  // 確認視窗 (Promise)
-  confirm(title, text) {
-    return new Promise((res) => {
-      const m = document.getElementById("custom-modal");
-      if (!m) {
-        res(true);
-        return;
-      } // 若找不到 modal，預設同意
-
-      document.getElementById("modal-title").innerText = title;
-      document.getElementById("modal-text").innerHTML = text;
-
-      const btnYes = document.getElementById("modal-btn-yes");
-      const btnNo = document.getElementById("modal-btn-no");
-
-      // 重新綁定事件以避免堆疊
-      const newYes = btnYes.cloneNode(true);
-      const newNo = btnNo.cloneNode(true);
-      btnYes.parentNode.replaceChild(newYes, btnYes);
-      btnNo.parentNode.replaceChild(newNo, btnNo);
-
-      newYes.onclick = () => {
-        m.style.display = "none";
-        res(true);
-      };
-      newNo.onclick = () => {
-        m.style.display = "none";
-        res(false);
-      };
-
-      m.style.display = "flex";
-    });
-  },
-
-  // 渲染左側玩家狀態面板 (安全版)
   updatePlayerPanel() {
     if (!Player.class) return;
 
-    // 更新數值文字
     const safeSet = (id, val) => {
       const el = document.getElementById(id);
       if (el) el.innerText = val;
@@ -68,11 +28,9 @@ const UI = {
     safeSet("stat-atk", Player.stats.atk);
     safeSet("stat-spd", Player.stats.speed);
 
-    // 暴擊率顯示
     const critRate = Math.floor((Player.stats.crit || 0.05) * 100);
     safeSet("stat-crit", `${critRate}%`);
 
-    // 防禦/減傷顯示
     let defText = "";
     if (Player.stats.block > 0)
       defText += `格擋${Math.floor(Player.stats.block * 100)}% `;
@@ -82,7 +40,25 @@ const UI = {
       defText += `減傷${Math.floor(Player.stats.def * 100)}% `;
     safeSet("stat-def", defText || "0%");
 
-    // 更新裝備圖示
+    // 特殊數值
+    const sanityRow = document.getElementById("stat-sanity-row");
+    const karmaRow = document.getElementById("stat-karma-row");
+
+    if (Player.currentWorld === "phantasm" && sanityRow) {
+      sanityRow.style.display = "flex";
+      document.getElementById("stat-sanity").innerText = Player.sanity;
+    } else if (sanityRow) {
+      sanityRow.style.display = "none";
+    }
+
+    if (Player.currentWorld === "purgatory" && karmaRow) {
+      karmaRow.style.display = "flex";
+      document.getElementById("stat-karma").innerText = Player.karma;
+    } else if (karmaRow) {
+      karmaRow.style.display = "none";
+    }
+
+    // 裝備圖示
     for (let slot in Player.equipment) {
       const el = document.querySelector(`.mini-slot[data-slot="${slot}"]`);
       const item = Player.equipment[slot];
@@ -96,14 +72,21 @@ const UI = {
               : "💍";
           el.style.borderColor = `var(--rarity-${item.rarity})`;
           el.style.color = `var(--rarity-${item.rarity})`;
+          if (item.setId) el.style.boxShadow = "0 0 5px var(--rarity-common)";
+          else el.style.boxShadow = "none";
+
           el.onclick = () => {
             if (confirm(`卸下 ${item.name}?`)) Inventory.unequip(slot);
           };
 
-          // Tooltip 內容
           let statsStr = `[${item.name}]\n`;
+          if (item.setId && CONFIG.sets[item.setId])
+            statsStr += `【${CONFIG.sets[item.setId].name}套裝】\n`;
           for (let k in item.stats) {
-            if (item.stats[k] > 0) statsStr += `${k}: +${item.stats[k]}\n`;
+            if (item.stats[k] !== 0)
+              statsStr += `${k}: ${item.stats[k] > 0 ? "+" : ""}${
+                item.stats[k]
+              }\n`;
           }
           el.title = statsStr;
         } else {
@@ -111,39 +94,73 @@ const UI = {
             slot === "weapon" ? "⚔️" : slot.includes("armor") ? "👕" : "💍";
           el.style.borderColor = "var(--border)";
           el.style.color = "#555";
+          el.style.boxShadow = "none";
           el.onclick = null;
           el.title = "空";
         }
       }
     }
+
+    const setDiv = document.getElementById("active-sets");
+    if (setDiv) {
+      let txt = [];
+      for (let sid in Player.activeSets) {
+        const count = Player.activeSets[sid];
+        if (count >= 2 && CONFIG.sets[sid]) {
+          txt.push(`${CONFIG.sets[sid].name}(${count})`);
+        }
+      }
+      setDiv.innerText = txt.join(", ");
+    }
   },
 };
 
-/* 全局系統與存檔 */
+/* 全局系統與存檔 (修復版) */
 const GlobalSystem = {
-  KEY: "rpg_abyss_global",
-  data: {
+  KEY: "rpg_abyss_global_v2",
+  // 預設值
+  defaultData: {
     unlockedRaces: ["human", "elf", "orc", "dwarf", "halfling"],
     unlockedClasses: ["warrior", "thief", "archer", "mage", "cleric"],
-    unlockedItems: [],
+    discoveredItems: [],
     maxDepth: 0,
     totalDeaths: 0,
+    legacyItem: null,
   },
+  data: {},
+
+  init() {
+    this.data = JSON.parse(JSON.stringify(this.defaultData)); // Deep copy default
+    this.load();
+  },
+
   load() {
     try {
       const d = localStorage.getItem(this.KEY);
-      if (d) this.data = { ...this.data, ...JSON.parse(d) };
+      if (d) {
+        const loaded = JSON.parse(d);
+        // 合併讀取的資料與預設資料 (防止 undefined)
+        this.data = { ...this.defaultData, ...loaded };
+
+        // 雙重保險：確保陣列存在
+        if (!this.data.unlockedRaces)
+          this.data.unlockedRaces = [...this.defaultData.unlockedRaces];
+        if (!this.data.unlockedClasses)
+          this.data.unlockedClasses = [...this.defaultData.unlockedClasses];
+      }
     } catch (e) {
-      console.error("Global load failed", e);
+      console.error("Global load failed, using defaults", e);
+      this.data = JSON.parse(JSON.stringify(this.defaultData));
     }
   },
+
   save() {
     localStorage.setItem(this.KEY, JSON.stringify(this.data));
   },
-  registerItem(name) {
-    if (!name) return;
-    if (!this.data.unlockedItems.includes(name)) {
-      this.data.unlockedItems.push(name);
+  unlockItem(name) {
+    if (!this.data.discoveredItems) this.data.discoveredItems = [];
+    if (!this.data.discoveredItems.includes(name)) {
+      this.data.discoveredItems.push(name);
       this.save();
     }
   },
@@ -151,12 +168,40 @@ const GlobalSystem = {
     if (!this.data.unlockedClasses.includes(id)) {
       this.data.unlockedClasses.push(id);
       this.save();
-      UI.toast(`解鎖新職業: ${CONFIG.classes[id].name}`, "gain");
+      UI.toast(`解鎖新職業：${CONFIG.classes[id].name}`, "gain");
     }
+  },
+  unlockLegacy(race, cls) {
+    let changed = false;
+    if (race && !this.data.unlockedRaces.includes(race)) {
+      this.data.unlockedRaces.push(race);
+      changed = true;
+    }
+    if (cls && !this.data.unlockedClasses.includes(cls)) {
+      this.data.unlockedClasses.push(cls);
+      changed = true;
+    }
+    if (changed) {
+      this.save();
+      alert(`【傳承解鎖】\n下周目已開放種族/職業！`);
+    }
+  },
+  storeLegacyItem(item) {
+    this.data.legacyItem = item;
+    this.save();
+    UI.toast("裝備已存入時空膠囊", "gain");
+  },
+  retrieveLegacyItem() {
+    if (this.data.legacyItem) {
+      const item = this.data.legacyItem;
+      this.data.legacyItem = null;
+      this.save();
+      return item;
+    }
+    return null;
   },
 };
 
-/* 玩家物件 (初始狀態) */
 const Player = {
   name: "勇者",
   race: null,
@@ -168,7 +213,6 @@ const Player = {
   currentWorld: "normal",
   sanity: 100,
   karma: 0,
-  // 核心屬性，會被 recalcPlayerStats 覆蓋
   stats: {
     maxHp: 100,
     atk: 10,
@@ -191,7 +235,8 @@ const Player = {
     acc3: null,
   },
   activeSets: {},
-  flags: {}, // 用於紀錄特殊事件 (如惡魔契約)
+  flags: {},
+  records: { luckyEventStreak: 0, unarmedWins: 0 },
 };
 
 /* 物品生成系統 */
@@ -201,12 +246,11 @@ const ItemSystem = {
       "weapon",
       "armor_upper",
       "armor_lower",
-      "consumable",
+      "accessory",
       "material",
     ];
     const type = forcedType || types[Math.floor(Math.random() * types.length)];
 
-    // 生成素材
     if (type === "material") {
       const keys = Object.keys(CONFIG.materials);
       const k = keys[Math.floor(Math.random() * keys.length)];
@@ -215,201 +259,173 @@ const ItemSystem = {
         type: "material",
         baseName: CONFIG.materials[k].name,
         ...CONFIG.materials[k],
-        rarity: "common",
+        rarity: CONFIG.materials[k].rarity || "common",
       };
     }
 
-    // 決定稀有度
-    let rarity = "common";
-    const rand = Math.random();
-    if (Player.depth > 50 && rand < 0.05) rarity = "legendary";
-    else if (Player.depth > 30 && rand < 0.15) rarity = "epic";
-    else if (Player.depth > 10 && rand < 0.35) rarity = "rare";
-    else if (rand < 0.6) rarity = "uncommon";
-
-    // 獲取物品池 (根據當前區域的套裝)
     const biome =
       CONFIG.biomes[Player.currentBiomeId] || CONFIG.biomes["plains"];
-    let pool =
-      Math.random() < 0.5 && biome.set
-        ? CONFIG.itemPool.sets[biome.set]
-        : CONFIG.itemPool.common;
-    if (forcedType) pool = pool.filter((i) => i.type === forcedType);
+    let pool = [];
+    if (Math.random() < 0.5 && biome.set && CONFIG.itemPool.sets[biome.set]) {
+      pool = CONFIG.itemPool.sets[biome.set];
+    }
     if (!pool || pool.length === 0) pool = CONFIG.itemPool.common;
 
+    if (forcedType) pool = pool.filter((i) => i.type === forcedType);
+    if (pool.length === 0) pool = CONFIG.itemPool.common;
+
     const base = pool[Math.floor(Math.random() * pool.length)];
+
+    let rarity = "common";
+    const rand = Math.random();
+    if (Player.currentWorld === "purgatory")
+      rarity = rand < 0.2 ? "abyssal" : "legendary";
+    else if (Player.currentWorld === "phantasm")
+      rarity = rand < 0.2 ? "phantasm" : "epic";
+    else {
+      if (Player.depth > 100 && rand < 0.05) rarity = "legendary";
+      else if (Player.depth > 50 && rand < 0.15) rarity = "epic";
+      else if (Player.depth > 20 && rand < 0.35) rarity = "rare";
+      else if (rand < 0.6) rarity = "uncommon";
+    }
+    if (base.rarity) rarity = base.rarity;
 
     let item = {
       id: Date.now() + Math.random().toString().slice(2),
       name: base.name,
       baseName: base.name,
       type: base.type,
+      subtype: base.subtype,
       rarity: rarity,
       setId: base.setId,
+      desc: base.desc,
       stats: {},
     };
 
-    // 如果是消耗品
-    if (type === "consumable") {
-      item.effect = base.effect;
-      item.value = base.value || 10;
-      return item;
-    }
+    if (base.baseAtk) item.stats.atk = base.baseAtk;
+    if (base.baseHp) item.stats.maxHp = base.baseHp;
+    if (base.baseSpd) item.stats.speed = base.baseSpd;
+    if (base.baseDef) item.stats.def = base.baseDef;
+    if (base.baseCrit) item.stats.crit = base.baseCrit;
 
-    // 計算數值 (加上稀有度加成)
     const rInfo = CONFIG.rarity[rarity];
     const mult = rInfo ? rInfo.mult : 1.0;
 
-    if (base.baseAtk) item.stats.atk = Math.floor(base.baseAtk * mult);
-    if (base.baseHp) item.stats.maxHp = Math.floor(base.baseHp * mult);
-    if (base.baseSpd) item.stats.speed = Math.floor(base.baseSpd * mult);
-
-    // 詞綴系統 (Affixes)
-    if (rarity !== "common") {
-      const rollAffix = (list) => {
-        const valid = list.filter(
-          (a) =>
-            !a.minRarity ||
-            CONFIG.rarity[rarity].mult >= CONFIG.rarity[a.minRarity].mult
-        );
-        return valid.length
-          ? valid[Math.floor(Math.random() * valid.length)]
-          : null;
-      };
-
-      const prefix =
-        Math.random() < 0.5 ? rollAffix(CONFIG.affixes.prefixes) : null;
-      const suffix =
-        Math.random() < 0.5 ? rollAffix(CONFIG.affixes.suffixes) : null;
-
-      const applyAffix = (affix) => {
-        if (!affix) return;
-        const m = rInfo.affixMult || 1.2;
-        if (affix.type === "atk")
-          item.stats.atk = Math.floor(
-            (item.stats.atk || 0) * (1 + affix.val * m)
-          );
-        if (affix.type === "maxHp")
-          item.stats.maxHp = Math.floor(
-            (item.stats.maxHp || 0) * (1 + affix.val * m)
-          );
-        if (affix.type === "flat_atk")
-          item.stats.atk = (item.stats.atk || 0) + Math.floor(affix.val * m);
-        if (affix.type === "flat_hp")
-          item.stats.maxHp =
-            (item.stats.maxHp || 0) + Math.floor(affix.val * m);
-        if (affix.type === "crit")
-          item.stats.crit = (item.stats.crit || 0) + affix.val;
-      };
-
-      applyAffix(prefix);
-      applyAffix(suffix);
-
-      // 重組名稱
-      let name = item.name;
-      if (prefix) name = `${prefix.name}的${name}`;
-      if (suffix) name = `${name}${suffix.name}`;
-      item.name = name;
+    for (let k in item.stats) {
+      if (!["def", "crit", "dodge", "block"].includes(k)) {
+        item.stats[k] = Math.floor(item.stats[k] * mult);
+      }
     }
 
+    if (rarity !== "common" && rarity !== "abyssal" && rarity !== "phantasm") {
+      const prefix =
+        Math.random() < 0.6
+          ? CONFIG.affixes.prefixes[
+              Math.floor(Math.random() * CONFIG.affixes.prefixes.length)
+            ]
+          : null;
+      const suffix =
+        Math.random() < 0.6
+          ? CONFIG.affixes.suffixes[
+              Math.floor(Math.random() * CONFIG.affixes.suffixes.length)
+            ]
+          : null;
+
+      let nameParts = [];
+      if (prefix) {
+        nameParts.push(prefix.name);
+        if (prefix.type && prefix.val) {
+          let key = prefix.type;
+          let val = prefix.val;
+          if (["atk", "maxHp", "speed"].includes(key) && val < 2) {
+            item.stats[key] = Math.floor((item.stats[key] || 10) * (1 + val));
+          } else {
+            item.stats[key] = (item.stats[key] || 0) + val;
+          }
+        }
+      }
+      nameParts.push(base.name);
+      if (suffix) {
+        nameParts.push(suffix.name);
+        if (suffix.type && suffix.val) {
+          let key = suffix.type.replace("flat_", "");
+          item.stats[key] = (item.stats[key] || 0) + suffix.val;
+        }
+      }
+      item.name = nameParts.join("");
+    }
     return item;
   },
 };
 
-/* 背包系統 */
 const Inventory = {
   add(item) {
     Player.inventory.push(item);
-    GlobalSystem.registerItem(item.baseName || item.name);
-    // 自動更新 UI (如果是在非戰鬥狀態)
+    GlobalSystem.unlockItem(item.baseName || item.name);
     const invList = document.getElementById("inventory-list");
-    if (invList && invList.offsetParent !== null) {
-      this.render();
-    }
-    // 增加一個小紅點或計數更新
+    if (invList && invList.offsetParent !== null) this.render();
     const countEl = document.getElementById("inv-count");
     if (countEl) countEl.innerText = `${Player.inventory.length}`;
   },
-
   remove(id) {
     Player.inventory = Player.inventory.filter((i) => i.id !== id);
   },
-
   equip(id) {
     const item = Player.inventory.find((i) => i.id === id);
     if (!item) return;
-
     let slot = item.type;
-    // 飾品邏輯：自動找空位
     if (item.type === "accessory") {
       if (!Player.equipment.acc1) slot = "acc1";
       else if (!Player.equipment.acc2) slot = "acc2";
       else if (!Player.equipment.acc3) slot = "acc3";
-      else slot = "acc1"; // 預設替換第一個
+      else slot = "acc1";
     }
-
-    // 交換裝備
-    if (Player.equipment[slot]) {
-      this.add(Player.equipment[slot]);
-    }
+    if (Player.equipment[slot]) this.add(Player.equipment[slot]);
     Player.equipment[slot] = item;
-
-    // 從背包移除
     this.remove(id);
-
-    // 重新計算屬性
-    if (typeof Game !== "undefined" && Game.recalcPlayerStats) {
-      Game.recalcPlayerStats();
-    }
-
+    if (typeof Game !== "undefined") Game.recalcPlayerStats();
     this.render();
     UI.updatePlayerPanel();
     StorageSystem.saveGame();
   },
-
   unequip(slot) {
     const item = Player.equipment[slot];
     if (item) {
       this.add(item);
       Player.equipment[slot] = null;
-      if (typeof Game !== "undefined" && Game.recalcPlayerStats) {
-        Game.recalcPlayerStats();
-      }
+      if (typeof Game !== "undefined") Game.recalcPlayerStats();
       this.render();
       UI.updatePlayerPanel();
       StorageSystem.saveGame();
     }
   },
-
   use(id) {
     const item = Player.inventory.find((i) => i.id === id);
     if (!item) return;
-
     if (item.type === "consumable") {
-      if (item.effect && item.effect.hp) {
-        const heal = item.effect.hp;
-        Player.currentHp = Math.min(
-          Player.stats.maxHp,
-          Player.currentHp + heal
-        );
-        UI.toast(`恢復了 ${heal} 點生命`, "heal");
-        UI.updatePlayerPanel();
-      } else {
-        UI.toast("使用了物品", "info");
+      if (item.effect) {
+        if (item.effect.hp) {
+          const heal = item.effect.hp;
+          Player.currentHp = Math.min(
+            Player.stats.maxHp,
+            Player.currentHp + heal
+          );
+          UI.toast(`恢復了 ${heal} HP`, "heal");
+        }
+        if (item.effect.open_world && typeof Game !== "undefined") {
+          Game.enterWorld(item.effect.open_world);
+        }
       }
       this.remove(id);
+      UI.updatePlayerPanel();
       this.render();
       StorageSystem.saveGame();
     }
   },
-
-  // 渲染背包列表
   render(filter = "all") {
     const l = document.getElementById("inventory-list");
     if (!l) return;
     l.innerHTML = "";
-
-    // 更新計數
     const countEl = document.getElementById("inv-count");
     if (countEl) countEl.innerText = `${Player.inventory.length} | ✨0`;
 
@@ -429,94 +445,63 @@ const Inventory = {
 
     list.forEach((item) => {
       const div = document.createElement("div");
-      const rColor = CONFIG.rarity[item.rarity]
-        ? CONFIG.rarity[item.rarity].color
-        : "text-common";
-      const rBorder = CONFIG.rarity[item.rarity]
-        ? CONFIG.rarity[item.rarity].border
-        : "border-common";
-
-      div.className = `inv-item ${rBorder}`;
-
-      let actions = "";
-      if (item.type === "consumable") {
-        actions = `<button class="btn-secondary" onclick="Inventory.use('${item.id}')">使用</button>`;
-      } else if (item.type !== "material") {
-        actions = `<button class="btn-secondary" onclick="Inventory.equip('${item.id}')">裝備</button>`;
-      }
-
-      // 構建屬性描述
-      let statsTxt = "";
+      const rColor = `var(--rarity-${item.rarity || "common"})`;
+      div.className = "inv-item";
+      div.style.borderLeft = `4px solid ${rColor}`;
+      let meta = item.desc || "";
       if (item.stats) {
-        if (item.stats.atk) statsTxt += `攻${item.stats.atk} `;
-        if (item.stats.maxHp) statsTxt += `血${item.stats.maxHp} `;
-        if (item.stats.crit)
-          statsTxt += `暴${(item.stats.crit * 100).toFixed(0)}% `;
+        let s = [];
+        if (item.stats.atk) s.push(`攻${item.stats.atk}`);
+        if (item.stats.maxHp) s.push(`血${item.stats.maxHp}`);
+        if (s.length > 0) meta = s.join(" ");
       }
+      let btn = "";
+      if (item.type === "consumable")
+        btn = `<button class="btn-secondary" onclick="Inventory.use('${item.id}')">使用</button>`;
+      else if (item.type !== "material")
+        btn = `<button class="btn-secondary" onclick="Inventory.equip('${item.id}')">裝備</button>`;
 
       div.innerHTML = `
             <div class="inv-item-info">
-                <div class="inv-name ${rColor}">${item.name}</div>
-                <div class="inv-meta" style="font-size:0.8em; color:#888;">${
-                  statsTxt || item.desc || "無屬性"
-                }</div>
+                <div class="inv-name" style="color:${rColor}">${item.name}</div>
+                <div class="inv-meta">${meta}</div>
             </div>
-            <div class="inv-actions">${actions}</div>
+            <div class="inv-actions">${btn}</div>
         `;
       l.appendChild(div);
     });
   },
 };
 
-/* 存檔系統 */
 const StorageSystem = {
-  SAVE_KEY: "rpg_abyss_v4",
-
+  SAVE_KEY: "rpg_abyss_v5_fixed",
   saveGame(manual = false) {
     if (Player.currentHp <= 0 || !Player.class) return;
-    try {
-      const data = {
-        player: Player,
-        global: GlobalSystem.data,
-        ts: Date.now(),
-      };
-      localStorage.setItem(this.SAVE_KEY, JSON.stringify(data));
-      if (manual) UI.toast("✅ 進度已保存", "gain");
-    } catch (e) {
-      console.error("Save failed", e);
-    }
+    const data = { player: Player, global: GlobalSystem.data, ts: Date.now() };
+    localStorage.setItem(this.SAVE_KEY, JSON.stringify(data));
+    if (manual) UI.toast("✅ 進度已保存", "gain");
   },
-
   loadGame() {
     try {
       const raw = localStorage.getItem(this.SAVE_KEY);
       if (!raw) return false;
       const d = JSON.parse(raw);
-
-      if (d.player) {
-        // 深度合併防止屬性遺失
-        Object.assign(Player, d.player);
-        // 確保 stats 存在 (舊存檔兼容)
-        if (!Player.stats) Player.stats = { ...Player.baseStats };
-      }
-      if (d.global) GlobalSystem.data = d.global;
-
-      // 載入後立即更新 UI
+      if (d.player) Object.assign(Player, d.player);
+      if (d.global)
+        GlobalSystem.data = { ...GlobalSystem.defaultData, ...d.global }; // 合併防呆
+      if (!Player.stats) Player.stats = { ...Player.baseStats }; // 確保 stats 存在
       UI.updatePlayerPanel();
       return true;
     } catch (e) {
-      console.error("Load failed", e);
       return false;
     }
   },
-
   hardReset() {
-    if (confirm("確定要刪除所有進度嗎？此操作無法復原。")) {
+    if (confirm("確定要刪除進度嗎？")) {
       localStorage.removeItem(this.SAVE_KEY);
       location.reload();
     }
   },
-
   exportSave() {
     const code = btoa(
       encodeURIComponent(
@@ -527,9 +512,8 @@ const StorageSystem = {
     area.value = code;
     area.select();
     document.execCommand("copy");
-    UI.toast("存檔代碼已複製！", "gain");
+    UI.toast("代碼已複製", "gain");
   },
-
   importSave() {
     const area = document.getElementById("save-code-area");
     if (!area.value) return UI.toast("請貼上代碼", "warn");
@@ -542,49 +526,104 @@ const StorageSystem = {
         setTimeout(() => location.reload(), 500);
       }
     } catch (e) {
-      UI.toast("無效的代碼", "warn");
+      UI.toast("無效代碼", "warn");
     }
   },
 };
 
-/* 製作與商人介面 (簡化版) */
 const Crafting = {
   render() {
     const l = document.getElementById("recipe-list");
     if (!l) return;
     l.innerHTML = "";
+    // 防呆：確保 discoveredItems 存在
+    const discovered = GlobalSystem.data.discoveredItems || [];
+
     CONFIG.recipes.forEach((r) => {
-      // 簡單渲染邏輯
+      const mats = Object.keys(r.req);
+      const known = mats.some(
+        (mKey) =>
+          mKey !== "gold" && discovered.includes(CONFIG.materials[mKey]?.name)
+      );
+      if (!known && mats.length > 0) return;
+
       const div = document.createElement("div");
       div.className = "inv-item border-rare";
-      // 檢查素材
       let canCraft = true;
-      let reqTxt = "";
-      for (let k in r.req) {
-        const count = Player.inventory.filter(
-          (i) => i.baseName === CONFIG.materials[k]?.name
-        ).length;
-        if (count < r.req[k]) canCraft = false;
-        reqTxt += `${CONFIG.materials[k]?.name || k} ${count}/${r.req[k]} `;
+      let reqHtml = [];
+      for (let mKey in r.req) {
+        if (mKey === "gold") {
+          const has = Player.gold;
+          const need = r.req[mKey];
+          if (has < need) canCraft = false;
+          reqHtml.push(
+            `<span class="${
+              has >= need ? "text-common" : "text-uncommon"
+            }">${need}G</span>`
+          );
+        } else {
+          const matName = CONFIG.materials[mKey]
+            ? CONFIG.materials[mKey].name
+            : mKey;
+          const has = Player.inventory.filter(
+            (i) => i.baseName === matName
+          ).length;
+          const need = r.req[mKey];
+          if (has < need) canCraft = false;
+          reqHtml.push(
+            `<span class="${
+              has >= need ? "text-common" : "text-uncommon"
+            }">${matName} ${has}/${need}</span>`
+          );
+        }
       }
-
       div.innerHTML = `
-                <div>
-                    <div class="text-rare">${r.name}</div>
-                    <div style="font-size:0.8em; color:#888">${reqTxt}</div>
-                </div>
+                <div style="flex:1"><div class="text-rare" style="font-weight:bold">${
+                  r.name
+                }</div>
+                <div style="font-size:0.8em; color:#aaa">${r.desc}</div>
+                <div style="font-size:0.8em; margin-top:4px;">${reqHtml.join(
+                  ", "
+                )}</div></div>
                 <button ${
                   canCraft ? "" : "disabled"
-                } onclick="Crafting.craft('${r.name}')">合成</button>
+                } onclick="Crafting.craft('${
+        r.name
+      }')" class="btn-primary">合成</button>
             `;
       l.appendChild(div);
     });
+    if (l.innerHTML === "")
+      l.innerHTML =
+        "<div style='text-align:center; padding:20px; color:#666'>收集素材以解鎖配方...</div>";
   },
-  craft(name) {
-    const r = CONFIG.recipes.find((x) => x.name === name);
+  craft(rName) {
+    const r = CONFIG.recipes.find((x) => x.name === rName);
     if (!r) return;
-    // 扣除素材邏輯 (略，為保持穩定暫時簡化)
-    UI.toast("合成功能暫時簡化，請期待更新", "info");
+    for (let mKey in r.req) {
+      if (mKey === "gold") Player.gold -= r.req[mKey];
+      else {
+        const matName = CONFIG.materials[mKey].name;
+        for (let i = 0; i < r.req[mKey]; i++) {
+          const idx = Player.inventory.findIndex((x) => x.baseName === matName);
+          if (idx > -1) Player.inventory.splice(idx, 1);
+        }
+      }
+    }
+    let item = {
+      id: Date.now(),
+      name: r.name,
+      type: r.type,
+      rarity: "epic",
+      stats: { ...r.stats },
+      setId: r.setId,
+      desc: r.desc,
+    };
+    if (r.type === "consumable") item.effect = r.effect;
+    Inventory.add(item);
+    UI.toast(`合成成功：${r.name}`, "gain");
+    this.render();
+    UI.updatePlayerPanel();
   },
 };
 
@@ -593,13 +632,17 @@ const Compendium = {
     const l = document.getElementById("compendium-list");
     if (!l) return;
     l.innerHTML = "";
-    GlobalSystem.data.unlockedItems.forEach((name) => {
+    const items = GlobalSystem.data.discoveredItems || [];
+    if (items.length === 0) {
+      l.innerHTML = "<div style='text-align:center;color:#666'>尚無紀錄</div>";
+      return;
+    }
+    items.forEach((name) => {
       const d = document.createElement("div");
-      d.className = "inv-item border-common";
-      d.innerText = name;
+      d.className = "inv-item";
+      d.innerHTML = `<div class="inv-name text-common">${name}</div>`;
       l.appendChild(d);
     });
   },
 };
-
-const Blacksmith = { render() {} }; // 佔位符防止報錯
+const Blacksmith = { render() {} };

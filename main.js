@@ -1,486 +1,648 @@
-/* main.js */
-const EventDirector = {
-  checkAwakening() {
-    for (let cid in CONFIG.classes) {
-      const c = CONFIG.classes[cid];
-      if (!c.hidden || !c.unlockCheck) continue;
-      if (Player.flags[`rej_${cid}`] || Player.class === cid) continue;
-      if (c.unlockCheck(Player, {})) return cid; // 移除 combatStats 依賴
+/* core.js - 核心與存檔管理 (防呆修復版) */
+
+const UI = {
+  toast(msg, type = "info") {
+    const c = document.getElementById("toast-container");
+    if (!c) return;
+    const d = document.createElement("div");
+    d.className = `toast ${type}`;
+    d.innerHTML = msg;
+    c.appendChild(d);
+    setTimeout(() => {
+      d.style.opacity = "0";
+      d.style.transform = "translateY(-10px)";
+      setTimeout(() => d.remove(), 300);
+    }, 2000);
+  },
+
+  updatePlayerPanel() {
+    if (!Player.class) return;
+
+    const safeSet = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.innerText = val;
+    };
+
+    safeSet("header-gold", Player.gold);
+    safeSet("stat-hp", `${Math.floor(Player.currentHp)}/${Player.stats.maxHp}`);
+    safeSet("stat-atk", Player.stats.atk);
+    safeSet("stat-spd", Player.stats.speed);
+
+    const critRate = Math.floor((Player.stats.crit || 0.05) * 100);
+    safeSet("stat-crit", `${critRate}%`);
+
+    let defText = "";
+    if (Player.stats.block > 0)
+      defText += `格擋${Math.floor(Player.stats.block * 100)}% `;
+    if (Player.stats.dodge > 0)
+      defText += `閃避${Math.floor(Player.stats.dodge * 100)}% `;
+    if (Player.stats.def > 0)
+      defText += `減傷${Math.floor(Player.stats.def * 100)}% `;
+    safeSet("stat-def", defText || "0%");
+
+    // 特殊數值
+    const sanityRow = document.getElementById("stat-sanity-row");
+    const karmaRow = document.getElementById("stat-karma-row");
+
+    if (Player.currentWorld === "phantasm" && sanityRow) {
+      sanityRow.style.display = "flex";
+      document.getElementById("stat-sanity").innerText = Player.sanity;
+    } else if (sanityRow) {
+      sanityRow.style.display = "none";
+    }
+
+    if (Player.currentWorld === "purgatory" && karmaRow) {
+      karmaRow.style.display = "flex";
+      document.getElementById("stat-karma").innerText = Player.karma;
+    } else if (karmaRow) {
+      karmaRow.style.display = "none";
+    }
+
+    // 裝備圖示
+    for (let slot in Player.equipment) {
+      const el = document.querySelector(`.mini-slot[data-slot="${slot}"]`);
+      const item = Player.equipment[slot];
+      if (el) {
+        if (item) {
+          el.innerHTML =
+            item.type === "weapon"
+              ? "⚔️"
+              : item.type.includes("armor")
+              ? "👕"
+              : "💍";
+          el.style.borderColor = `var(--rarity-${item.rarity})`;
+          el.style.color = `var(--rarity-${item.rarity})`;
+          if (item.setId) el.style.boxShadow = "0 0 5px var(--rarity-common)";
+          else el.style.boxShadow = "none";
+
+          el.onclick = () => {
+            if (confirm(`卸下 ${item.name}?`)) Inventory.unequip(slot);
+          };
+
+          let statsStr = `[${item.name}]\n`;
+          if (item.setId && CONFIG.sets[item.setId])
+            statsStr += `【${CONFIG.sets[item.setId].name}套裝】\n`;
+          for (let k in item.stats) {
+            if (item.stats[k] !== 0)
+              statsStr += `${k}: ${item.stats[k] > 0 ? "+" : ""}${
+                item.stats[k]
+              }\n`;
+          }
+          el.title = statsStr;
+        } else {
+          el.innerHTML =
+            slot === "weapon" ? "⚔️" : slot.includes("armor") ? "👕" : "💍";
+          el.style.borderColor = "var(--border)";
+          el.style.color = "#555";
+          el.style.boxShadow = "none";
+          el.onclick = null;
+          el.title = "空";
+        }
+      }
+    }
+
+    const setDiv = document.getElementById("active-sets");
+    if (setDiv) {
+      let txt = [];
+      for (let sid in Player.activeSets) {
+        const count = Player.activeSets[sid];
+        if (count >= 2 && CONFIG.sets[sid]) {
+          txt.push(`${CONFIG.sets[sid].name}(${count})`);
+        }
+      }
+      setDiv.innerText = txt.join(", ");
+    }
+  },
+};
+
+/* 全局系統與存檔 (修復版) */
+const GlobalSystem = {
+  KEY: "rpg_abyss_global_v2",
+  // 預設值
+  defaultData: {
+    unlockedRaces: ["human", "elf", "orc", "dwarf", "halfling"],
+    unlockedClasses: ["warrior", "thief", "archer", "mage", "cleric"],
+    discoveredItems: [],
+    maxDepth: 0,
+    totalDeaths: 0,
+    legacyItem: null,
+  },
+  data: {},
+
+  init() {
+    this.data = JSON.parse(JSON.stringify(this.defaultData)); // Deep copy default
+    this.load();
+  },
+
+  load() {
+    try {
+      const d = localStorage.getItem(this.KEY);
+      if (d) {
+        const loaded = JSON.parse(d);
+        // 合併讀取的資料與預設資料 (防止 undefined)
+        this.data = { ...this.defaultData, ...loaded };
+
+        // 雙重保險：確保陣列存在
+        if (!this.data.unlockedRaces)
+          this.data.unlockedRaces = [...this.defaultData.unlockedRaces];
+        if (!this.data.unlockedClasses)
+          this.data.unlockedClasses = [...this.defaultData.unlockedClasses];
+      }
+    } catch (e) {
+      console.error("Global load failed, using defaults", e);
+      this.data = JSON.parse(JSON.stringify(this.defaultData));
+    }
+  },
+
+  save() {
+    localStorage.setItem(this.KEY, JSON.stringify(this.data));
+  },
+  unlockItem(name) {
+    if (!this.data.discoveredItems) this.data.discoveredItems = [];
+    if (!this.data.discoveredItems.includes(name)) {
+      this.data.discoveredItems.push(name);
+      this.save();
+    }
+  },
+  unlockClass(id) {
+    if (!this.data.unlockedClasses.includes(id)) {
+      this.data.unlockedClasses.push(id);
+      this.save();
+      UI.toast(`解鎖新職業：${CONFIG.classes[id].name}`, "gain");
+    }
+  },
+  unlockLegacy(race, cls) {
+    let changed = false;
+    if (race && !this.data.unlockedRaces.includes(race)) {
+      this.data.unlockedRaces.push(race);
+      changed = true;
+    }
+    if (cls && !this.data.unlockedClasses.includes(cls)) {
+      this.data.unlockedClasses.push(cls);
+      changed = true;
+    }
+    if (changed) {
+      this.save();
+      alert(`【傳承解鎖】\n下周目已開放種族/職業！`);
+    }
+  },
+  storeLegacyItem(item) {
+    this.data.legacyItem = item;
+    this.save();
+    UI.toast("裝備已存入時空膠囊", "gain");
+  },
+  retrieveLegacyItem() {
+    if (this.data.legacyItem) {
+      const item = this.data.legacyItem;
+      this.data.legacyItem = null;
+      this.save();
+      return item;
     }
     return null;
   },
-  trigger() {
-    const evts = CONFIG.events;
-    let tot = evts.reduce((a, b) => a + b.weight, 0);
-    let r = Math.random() * tot;
-    let e = evts[0];
-    for (let v of evts) {
-      if (r < v.weight) {
-        e = v;
-        break;
-      }
-      r -= v.weight;
-    }
-    if (this[e.id]) this[e.id](); // 呼叫對應函式
-    else if (e.id === "chest") Game.triggerChest();
-    else if (e.id === "black_market") this.black_market();
-    else this.trap();
-  },
-  // 保留原有事件邏輯
-  spring() {
-    Game.renderEvent("治癒之泉", "⛲", "恢復生命", "飲用", () => {
-      Player.currentHp = Player.stats.maxHp;
-      UI.toast("滿血", "heal");
-      Game.nextDepth();
-    });
-  },
-  trap() {
-    Game.renderEvent("陷阱", "🪤", "受傷！", "掙扎", () => {
-      let pctDmg = Math.floor(Player.currentHp * 0.25);
-      let flatDmg = 10 + Math.floor(Player.depth * 0.5);
-      let d = pctDmg + flatDmg;
-      Player.currentHp -= d;
-      UI.toast(`-${d} HP`, "warn");
-      if (Player.currentHp <= 0) {
-        if (Player.flags.mark_of_sin) Game.enterWorld("purgatory");
-        else {
-          alert("死於陷阱");
-          location.reload();
-        }
-      } else Game.nextDepth();
-    });
-  },
-  gambler() {
-    Game.renderEvent(
-      "賭徒",
-      "🎲",
-      "賭一把(100G)",
-      "比大小",
-      () => {
-        if (Player.gold < 100) return UI.toast("沒錢", "warn");
-        Player.gold -= 100;
-        if (Math.random() < 0.5) {
-          Player.gold += 250;
-          UI.toast("贏了!", "gain");
-        } else UI.toast("輸了", "warn");
-        Game.updateHeader();
-        Game.nextDepth();
-      },
-      "離開",
-      () => Game.nextDepth()
-    );
-  },
-  cursed_sword() {
-    // 修正名稱對應
-    const i = ItemSystem.generate("weapon");
-    i.name = "詛咒之" + i.name;
-    i.stats.atk = Math.floor(i.stats.atk * 3);
-    const hpDmg = Math.floor(Player.baseStats.maxHp * 0.2);
-    Player.baseStats.maxHp = Math.floor(Player.baseStats.maxHp * 0.8);
-    Game.recalcPlayerStats();
-    Inventory.add(i);
-    UI.toast("獲得詛咒力量", "warn");
-    Game.nextDepth();
-  },
-  alchemist() {
-    Game.renderEvent(
-      "煉金術師",
-      "🧪",
-      "兩瓶藥水",
-      "變種族",
-      () => {
-        const r = Object.keys(CONFIG.races).filter(
-          (k) => !CONFIG.races[k].hidden
-        );
-        Player.race = r[Math.floor(Math.random() * r.length)];
-        Game.recalcPlayerStats();
-        UI.toast(`變成 ${CONFIG.races[Player.race].name}`, "gain");
-        Game.updateHeader();
-        Game.nextDepth();
-      },
-      "強化武器",
-      () => {
-        if (Player.equipment.weapon) {
-          Player.equipment.weapon.stats.atk += 10;
-          UI.toast("攻擊+10", "gain");
-        } else UI.toast("無武器", "warn");
-        Game.nextDepth();
-      }
-    );
-  },
-  demon_whisper() {
-    Game.renderEvent(
-      "惡魔低語",
-      "😈",
-      "獻祭防禦，換取力量...",
-      "接受",
-      () => {
-        Player.flags.mark_of_sin = true;
-        Game.recalcPlayerStats();
-        UI.toast("獲得【罪惡印記】", "warn");
-        Game.nextDepth();
-      },
-      "拒絕",
-      () => Game.nextDepth()
-    );
-  },
-  black_market() {
-    // 修正名稱
-    const isEquip = Math.random() < 0.6;
-    let item = isEquip
-      ? ItemSystem.generate()
-      : ItemSystem.generate("consumable");
-    if (item.rarity === "common") item.rarity = "rare";
-    let price = 200 + Player.depth * 5;
-    Game.renderEvent(
-      "黑市商人",
-      "🕵️",
-      `兜售: <span class="${CONFIG.rarity[item.rarity].color}">${
-        item.name
-      }</span><br>價格: ${price} G`,
-      "購買",
-      () => {
-        if (Player.gold >= price) {
-          Player.gold -= price;
-          Inventory.add(item);
-          UI.toast("交易愉快", "gain");
-          Game.updateHeader();
-          Game.nextDepth();
-        } else UI.toast("金幣不足", "warn");
-      },
-      "離開",
-      () => Game.nextDepth()
-    );
-  },
 };
 
-const Game = {
-  tempSetup: { race: null, cls: null },
-  init() {
-    GlobalSystem.load();
-    this.renderSetup();
-    this.initTabs();
-    document.getElementById("btn-start-game").onclick = () => this.startGame();
-    if (localStorage.getItem(StorageSystem.SAVE_KEY)) {
-      const lb = document.getElementById("btn-load-game");
-      lb.style.display = "inline-block";
-      lb.onclick = () => {
-        if (StorageSystem.loadGame()) {
-          this.recalcPlayerStats();
-          document.getElementById("setup-screen").style.display = "none";
-          document.getElementById("app").style.display = "grid";
-          this.openScreen("event-screen");
-          this.updateHeader();
-          UI.toast("讀取成功", "gain");
-        }
+const Player = {
+  name: "勇者",
+  race: null,
+  class: null,
+  depth: 0,
+  gold: 0,
+  currentHp: 100,
+  currentBiomeId: "plains",
+  currentWorld: "normal",
+  sanity: 100,
+  karma: 0,
+  stats: {
+    maxHp: 100,
+    atk: 10,
+    speed: 100,
+    crit: 0.05,
+    def: 0,
+    dodge: 0,
+    block: 0,
+    lifesteal: 0,
+    hp_regen: 0,
+  },
+  baseStats: { maxHp: 100, atk: 10, speed: 100 },
+  inventory: [],
+  equipment: {
+    weapon: null,
+    armor_upper: null,
+    armor_lower: null,
+    acc1: null,
+    acc2: null,
+    acc3: null,
+  },
+  activeSets: {},
+  flags: {},
+  records: { luckyEventStreak: 0, unarmedWins: 0 },
+};
+
+/* 物品生成系統 */
+const ItemSystem = {
+  generate(forcedType = null) {
+    const types = [
+      "weapon",
+      "armor_upper",
+      "armor_lower",
+      "accessory",
+      "material",
+    ];
+    const type = forcedType || types[Math.floor(Math.random() * types.length)];
+
+    if (type === "material") {
+      const keys = Object.keys(CONFIG.materials);
+      const k = keys[Math.floor(Math.random() * keys.length)];
+      return {
+        id: Date.now() + Math.random(),
+        type: "material",
+        baseName: CONFIG.materials[k].name,
+        ...CONFIG.materials[k],
+        rarity: CONFIG.materials[k].rarity || "common",
       };
     }
-    Crafting.render();
-  },
-  initTabs() {
-    document.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.onclick = () => {
-        const tabId = btn.dataset.tab;
-        this.switchTab(tabId);
-      };
-    });
-  },
-  switchTab(tabId) {
-    document
-      .querySelectorAll(".tab-btn")
-      .forEach((b) => b.classList.remove("active"));
-    document
-      .querySelectorAll(".tab-pane")
-      .forEach((p) => p.classList.remove("active"));
-    document
-      .querySelector(`.tab-btn[data-tab="${tabId}"]`)
-      .classList.add("active");
-    document.getElementById(`tab-${tabId}`).classList.add("active");
-    if (tabId === "crafting") Crafting.render();
-    if (tabId === "inventory") Inventory.render();
-    if (tabId === "compendium") Compendium.render();
-    if (tabId === "blacksmith") Blacksmith.render();
 
-    // 手機版切換 tab 時顯示右側面板
-    if (window.innerWidth <= 900) {
-      const panel = document.getElementById("action-panel");
-      if (panel.style.display === "flex")
-        panel.style.display = "none"; // Toggle off
-      else {
-        panel.style.display = "flex"; // Toggle on
-        panel.classList.add("show");
-      }
+    const biome =
+      CONFIG.biomes[Player.currentBiomeId] || CONFIG.biomes["plains"];
+    let pool = [];
+    if (Math.random() < 0.5 && biome.set && CONFIG.itemPool.sets[biome.set]) {
+      pool = CONFIG.itemPool.sets[biome.set];
     }
-  },
-  recalcPlayerStats() {
-    // 保持原本邏輯
-    const r = CONFIG.races[Player.race];
-    const c = CONFIG.classes[Player.class];
-    let s = {
-      ...Player.baseStats,
-      crit: 0.05,
-      dodge: 0,
-      block: 0,
-      lifesteal: 0,
-      hp_regen: 0,
-      def: 0,
-      crit_dmg: 1.5,
-      true_dmg: 0,
-      reflect: 0,
-      gold_drop: 1.0,
-    };
-    for (let k in c.bonus) if (s[k] !== undefined) s[k] += c.bonus[k];
-    Player.activeSets = {};
-    for (let sl in Player.equipment) {
-      const i = Player.equipment[sl];
-      if (i) {
-        if (i.stats)
-          for (let k in i.stats)
-            if (s[k] !== undefined) s[k] += i.stats[k];
-            else s[k] = i.stats[k];
-        if (i.setId)
-          Player.activeSets[i.setId] = (Player.activeSets[i.setId] || 0) + 1;
-      }
-    }
-    // Set Bonuses (Simplified for brevity, keep your original logic if needed)
-    for (let sid in Player.activeSets) {
-      const cnt = Player.activeSets[sid];
-      const set = CONFIG.sets[sid];
-      const app = (b) => {
-        for (let k in b) {
-          if (k === "all_stats") {
-            s.atk = Math.floor(s.atk * (1 + b[k]));
-            s.maxHp = Math.floor(s.maxHp * (1 + b[k]));
-          } else if (s[k] !== undefined) s[k] += b[k];
-          else s[k] = b[k];
-        }
-      };
-      if (cnt >= 2 && set.bonus2) app(set.bonus2);
-      if (cnt >= 4 && set.bonus4) app(set.bonus4);
-      if (cnt >= 6 && set.bonus6) app(set.bonus6);
-    }
-    for (let k in r.mod) if (s[k]) s[k] = Math.floor(s[k] * r.mod[k]);
-    if (Player.flags.mark_of_sin) {
-      s.atk *= 2;
-      s.def = 0;
-    }
-    Player.stats = s;
-    this.updateHeader();
-  },
-  nextDepth() {
-    Player.depth++;
-    // Biome Logic
-    if (Player.depth === 21) Player.currentBiomeId = "forest";
-    else if (Player.depth === 51)
-      Player.currentBiomeId = "cave"; // 簡化：直接切換，不隨機
-    else if (Player.depth === 101) Player.currentBiomeId = "volcano";
+    if (!pool || pool.length === 0) pool = CONFIG.itemPool.common;
 
-    if (Player.currentWorld === "phantasm") Player.sanity--;
-    if (Player.sanity <= 0 && Player.currentWorld === "phantasm")
-      this.leaveWorld();
+    if (forcedType) pool = pool.filter((i) => i.type === forcedType);
+    if (pool.length === 0) pool = CONFIG.itemPool.common;
 
-    this.updateHeader();
-    StorageSystem.saveGame();
+    const base = pool[Math.floor(Math.random() * pool.length)];
 
-    // Regen
-    if (Player.currentHp < Player.stats.maxHp)
-      Player.currentHp = Math.min(Player.stats.maxHp, Player.currentHp + 5);
-
-    // Event Routing
-    if (Player.depth % 20 === 0) this.triggerBoss();
+    let rarity = "common";
+    const rand = Math.random();
+    if (Player.currentWorld === "purgatory")
+      rarity = rand < 0.2 ? "abyssal" : "legendary";
+    else if (Player.currentWorld === "phantasm")
+      rarity = rand < 0.2 ? "phantasm" : "epic";
     else {
-      let r = Math.random();
-      if (r < 0.7) this.triggerCombat();
-      else if (r < 0.85) EventDirector.trigger();
-      else this.triggerChest();
+      if (Player.depth > 100 && rand < 0.05) rarity = "legendary";
+      else if (Player.depth > 50 && rand < 0.15) rarity = "epic";
+      else if (Player.depth > 20 && rand < 0.35) rarity = "rare";
+      else if (rand < 0.6) rarity = "uncommon";
     }
-  },
-  triggerCombat() {
-    const b = CONFIG.biomes[Player.currentBiomeId] || CONFIG.biomes["plains"];
-    const isElite = Math.random() < 0.2;
-    const mid = b.monsters[Math.floor(Math.random() * b.monsters.length)];
-    const enemy = { ...CONFIG.monsters[mid], id: mid };
+    if (base.rarity) rarity = base.rarity;
 
-    // 切換到戰鬥畫面
-    this.openScreen("combat-screen");
-    BattleSystem.start(enemy, isElite);
-  },
-  triggerBoss() {
-    const b = CONFIG.biomes[Player.currentBiomeId];
-    const enemy = { ...CONFIG.monsters[b.boss], id: b.boss, type: "boss" };
-    this.openScreen("combat-screen");
-    BattleSystem.start(enemy);
-  },
-  exitCombat() {
-    this.openScreen("event-screen");
-    this.nextDepth();
-  },
-  // --- Rendering Helpers ---
-  renderSetup() {
-    const rD = document.getElementById("race-options");
-    const cD = document.getElementById("class-options");
-    rD.innerHTML = "";
-    cD.innerHTML = "";
-    for (let k in CONFIG.races) {
-      if (
-        CONFIG.races[k].hidden &&
-        !GlobalSystem.data.unlockedRaces.includes(k)
-      )
-        continue;
-      let b = document.createElement("div");
-      b.className = "select-btn";
-      b.innerHTML = CONFIG.races[k].name;
-      b.onclick = () => {
-        this.tempSetup.race = k;
-        this.updateSetupUI();
-      };
-      rD.appendChild(b);
-    }
-    for (let k in CONFIG.classes) {
-      if (
-        CONFIG.classes[k].hidden &&
-        !GlobalSystem.data.unlockedClasses.includes(k)
-      )
-        continue;
-      let b = document.createElement("div");
-      b.className = "select-btn";
-      b.innerHTML = CONFIG.classes[k].name;
-      b.onclick = () => {
-        this.tempSetup.cls = k;
-        this.updateSetupUI();
-      };
-      cD.appendChild(b);
-    }
-  },
-  updateSetupUI() {
-    document
-      .querySelectorAll(".select-btn")
-      .forEach((b) => b.classList.remove("selected"));
-    // 簡單處理：點擊變色
-    const r = this.tempSetup.race ? CONFIG.races[this.tempSetup.race] : null;
-    const c = this.tempSetup.cls ? CONFIG.classes[this.tempSetup.cls] : null;
-    if (r && c) {
-      document.getElementById(
-        "setup-desc"
-      ).innerHTML = `<b>${r.name} ${c.name}</b><br>${r.desc}<br>${c.desc}`;
-      document.getElementById("btn-start-game").disabled = false;
-    }
-  },
-  startGame() {
-    Player.race = this.tempSetup.race;
-    Player.class = this.tempSetup.cls;
-    Inventory.add(ItemSystem.generate("weapon"));
-    this.recalcPlayerStats();
-    Player.currentHp = Player.stats.maxHp;
-    document.getElementById("setup-screen").style.display = "none";
-    document.getElementById("app").style.display = "grid";
-    this.openScreen("event-screen");
-    this.nextDepth();
-  },
-  openScreen(id) {
-    document
-      .querySelectorAll(".game-stage")
-      .forEach((s) => (s.style.display = "none"));
-    document.getElementById(id).style.display = "flex"; // Changed to flex for centering
-  },
-  updateHeader() {
-    const b = CONFIG.biomes[Player.currentBiomeId] || {
-      name: "未知",
-      color: "#fff",
+    let item = {
+      id: Date.now() + Math.random().toString().slice(2),
+      name: base.name,
+      baseName: base.name,
+      type: base.type,
+      subtype: base.subtype,
+      rarity: rarity,
+      setId: base.setId,
+      desc: base.desc,
+      stats: {},
     };
-    document.getElementById("header-depth").innerText = `F: ${Player.depth}`;
-    document.getElementById("header-biome").innerText = b.name;
-    document.getElementById("header-biome").style.color = b.color;
-    document.getElementById("header-gold").innerText = `💰 ${Player.gold}`;
-    document.getElementById("header-name").innerText = `${
-      CONFIG.races[Player.race].name
-    } ${CONFIG.classes[Player.class].name}`;
 
-    // Stats
-    document.getElementById("stat-hp").innerText = `${Math.floor(
-      Player.currentHp
-    )}/${Player.stats.maxHp}`;
-    document.getElementById("stat-atk").innerText = Player.stats.atk;
-    document.getElementById("stat-spd").innerText = Player.stats.speed;
-    document.getElementById("stat-crit").innerText =
-      Math.floor((Player.stats.crit || 0.05) * 100) + "%";
-    document.getElementById("stat-def").innerText =
-      Math.floor((Player.stats.def || 0) * 100) + "%";
+    if (base.baseAtk) item.stats.atk = base.baseAtk;
+    if (base.baseHp) item.stats.maxHp = base.baseHp;
+    if (base.baseSpd) item.stats.speed = base.baseSpd;
+    if (base.baseDef) item.stats.def = base.baseDef;
+    if (base.baseCrit) item.stats.crit = base.baseCrit;
 
-    // Equipment Icons
-    for (let s in Player.equipment) {
-      const el = document.querySelector(`.mini-slot[data-slot="${s}"]`);
-      const item = Player.equipment[s];
-      if (el) {
-        el.innerHTML = item
-          ? item.type === "weapon"
-            ? "⚔️"
-            : item.type.includes("armor")
-            ? "🛡️"
-            : "💍"
-          : s === "weapon"
-          ? "⚔️"
-          : s.includes("armor")
-          ? "👕"
-          : "💍";
-        el.style.borderColor = item ? `var(--rarity-${item.rarity})` : "#333";
-        el.style.color = item ? `var(--rarity-${item.rarity})` : "#555";
+    const rInfo = CONFIG.rarity[rarity];
+    const mult = rInfo ? rInfo.mult : 1.0;
+
+    for (let k in item.stats) {
+      if (!["def", "crit", "dodge", "block"].includes(k)) {
+        item.stats[k] = Math.floor(item.stats[k] * mult);
       }
     }
-    // Sets
-    const setsDiv = document.getElementById("active-sets");
-    if (setsDiv) {
-      let txt = [];
-      for (let sid in Player.activeSets)
-        if (Player.activeSets[sid] >= 2)
-          txt.push(`${CONFIG.sets[sid].name}(${Player.activeSets[sid]})`);
-      setsDiv.innerText = txt.join(", ");
+
+    if (rarity !== "common" && rarity !== "abyssal" && rarity !== "phantasm") {
+      const prefix =
+        Math.random() < 0.6
+          ? CONFIG.affixes.prefixes[
+              Math.floor(Math.random() * CONFIG.affixes.prefixes.length)
+            ]
+          : null;
+      const suffix =
+        Math.random() < 0.6
+          ? CONFIG.affixes.suffixes[
+              Math.floor(Math.random() * CONFIG.affixes.suffixes.length)
+            ]
+          : null;
+
+      let nameParts = [];
+      if (prefix) {
+        nameParts.push(prefix.name);
+        if (prefix.type && prefix.val) {
+          let key = prefix.type;
+          let val = prefix.val;
+          if (["atk", "maxHp", "speed"].includes(key) && val < 2) {
+            item.stats[key] = Math.floor((item.stats[key] || 10) * (1 + val));
+          } else {
+            item.stats[key] = (item.stats[key] || 0) + val;
+          }
+        }
+      }
+      nameParts.push(base.name);
+      if (suffix) {
+        nameParts.push(suffix.name);
+        if (suffix.type && suffix.val) {
+          let key = suffix.type.replace("flat_", "");
+          item.stats[key] = (item.stats[key] || 0) + suffix.val;
+        }
+      }
+      item.name = nameParts.join("");
     }
-  },
-  renderEvent(t, i, d, b1t, a1, b2t, a2) {
-    document.getElementById("event-title").innerText = t;
-    document.getElementById("event-icon").innerText = i;
-    document.getElementById("event-desc").innerHTML = d;
-    document.getElementById("event-content").innerHTML = ""; // Clear dynamic content like shop
-    const b1 = document.getElementById("btn-event-main");
-    b1.innerText = b1t;
-    b1.onclick = a1;
-    const b2 = document.getElementById("btn-event-sub");
-    if (b2t) {
-      b2.style.display = "inline-block";
-      b2.innerText = b2t;
-      b2.onclick = a2;
-    } else b2.style.display = "none";
-    this.openScreen("event-screen");
-  },
-  triggerChest() {
-    const i = ItemSystem.generate();
-    Inventory.add(i);
-    const g = Math.floor(Math.random() * 50) + 10;
-    Player.gold += g;
-    this.renderEvent(
-      "寶箱",
-      "📦",
-      `獲得 <span class='${CONFIG.rarity[i.rarity].color}'>${
-        i.name
-      }</span> 與 ${g}G`,
-      "確認",
-      () => this.nextDepth()
-    );
-  },
-  completeBiome() {
-    UI.toast("區域通關！", "gain");
-  },
-  enterWorld(w) {
-    Player.currentWorld = w;
-    UI.toast("進入新世界", "warn");
-    this.nextDepth();
-  },
-  leaveWorld() {
-    Player.currentWorld = "normal";
-    UI.toast("回歸現實", "gain");
-    this.nextDepth();
+    return item;
   },
 };
 
-window.onload = () => Game.init();
+const Inventory = {
+  add(item) {
+    Player.inventory.push(item);
+    GlobalSystem.unlockItem(item.baseName || item.name);
+    const invList = document.getElementById("inventory-list");
+    if (invList && invList.offsetParent !== null) this.render();
+    const countEl = document.getElementById("inv-count");
+    if (countEl) countEl.innerText = `${Player.inventory.length}`;
+  },
+  remove(id) {
+    Player.inventory = Player.inventory.filter((i) => i.id !== id);
+  },
+  equip(id) {
+    const item = Player.inventory.find((i) => i.id === id);
+    if (!item) return;
+    let slot = item.type;
+    if (item.type === "accessory") {
+      if (!Player.equipment.acc1) slot = "acc1";
+      else if (!Player.equipment.acc2) slot = "acc2";
+      else if (!Player.equipment.acc3) slot = "acc3";
+      else slot = "acc1";
+    }
+    if (Player.equipment[slot]) this.add(Player.equipment[slot]);
+    Player.equipment[slot] = item;
+    this.remove(id);
+    if (typeof Game !== "undefined") Game.recalcPlayerStats();
+    this.render();
+    UI.updatePlayerPanel();
+    StorageSystem.saveGame();
+  },
+  unequip(slot) {
+    const item = Player.equipment[slot];
+    if (item) {
+      this.add(item);
+      Player.equipment[slot] = null;
+      if (typeof Game !== "undefined") Game.recalcPlayerStats();
+      this.render();
+      UI.updatePlayerPanel();
+      StorageSystem.saveGame();
+    }
+  },
+  use(id) {
+    const item = Player.inventory.find((i) => i.id === id);
+    if (!item) return;
+    if (item.type === "consumable") {
+      if (item.effect) {
+        if (item.effect.hp) {
+          const heal = item.effect.hp;
+          Player.currentHp = Math.min(
+            Player.stats.maxHp,
+            Player.currentHp + heal
+          );
+          UI.toast(`恢復了 ${heal} HP`, "heal");
+        }
+        if (item.effect.open_world && typeof Game !== "undefined") {
+          Game.enterWorld(item.effect.open_world);
+        }
+      }
+      this.remove(id);
+      UI.updatePlayerPanel();
+      this.render();
+      StorageSystem.saveGame();
+    }
+  },
+  render(filter = "all") {
+    const l = document.getElementById("inventory-list");
+    if (!l) return;
+    l.innerHTML = "";
+    const countEl = document.getElementById("inv-count");
+    if (countEl) countEl.innerText = `${Player.inventory.length} | ✨0`;
+
+    let list = Player.inventory;
+    if (filter === "equip")
+      list = list.filter((i) =>
+        ["weapon", "armor_upper", "armor_lower", "accessory"].includes(i.type)
+      );
+    if (filter === "mat")
+      list = list.filter((i) => ["material", "consumable"].includes(i.type));
+
+    if (list.length === 0) {
+      l.innerHTML =
+        "<div style='color:#666; text-align:center; padding:20px;'>背包是空的</div>";
+      return;
+    }
+
+    list.forEach((item) => {
+      const div = document.createElement("div");
+      const rColor = `var(--rarity-${item.rarity || "common"})`;
+      div.className = "inv-item";
+      div.style.borderLeft = `4px solid ${rColor}`;
+      let meta = item.desc || "";
+      if (item.stats) {
+        let s = [];
+        if (item.stats.atk) s.push(`攻${item.stats.atk}`);
+        if (item.stats.maxHp) s.push(`血${item.stats.maxHp}`);
+        if (s.length > 0) meta = s.join(" ");
+      }
+      let btn = "";
+      if (item.type === "consumable")
+        btn = `<button class="btn-secondary" onclick="Inventory.use('${item.id}')">使用</button>`;
+      else if (item.type !== "material")
+        btn = `<button class="btn-secondary" onclick="Inventory.equip('${item.id}')">裝備</button>`;
+
+      div.innerHTML = `
+            <div class="inv-item-info">
+                <div class="inv-name" style="color:${rColor}">${item.name}</div>
+                <div class="inv-meta">${meta}</div>
+            </div>
+            <div class="inv-actions">${btn}</div>
+        `;
+      l.appendChild(div);
+    });
+  },
+};
+
+const StorageSystem = {
+  SAVE_KEY: "rpg_abyss_v5_fixed",
+  saveGame(manual = false) {
+    if (Player.currentHp <= 0 || !Player.class) return;
+    const data = { player: Player, global: GlobalSystem.data, ts: Date.now() };
+    localStorage.setItem(this.SAVE_KEY, JSON.stringify(data));
+    if (manual) UI.toast("✅ 進度已保存", "gain");
+  },
+  loadGame() {
+    try {
+      const raw = localStorage.getItem(this.SAVE_KEY);
+      if (!raw) return false;
+      const d = JSON.parse(raw);
+      if (d.player) Object.assign(Player, d.player);
+      if (d.global)
+        GlobalSystem.data = { ...GlobalSystem.defaultData, ...d.global }; // 合併防呆
+      if (!Player.stats) Player.stats = { ...Player.baseStats }; // 確保 stats 存在
+      UI.updatePlayerPanel();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+  hardReset() {
+    if (confirm("確定要刪除進度嗎？")) {
+      localStorage.removeItem(this.SAVE_KEY);
+      location.reload();
+    }
+  },
+  exportSave() {
+    const code = btoa(
+      encodeURIComponent(
+        JSON.stringify({ player: Player, global: GlobalSystem.data })
+      )
+    );
+    const area = document.getElementById("save-code-area");
+    area.value = code;
+    area.select();
+    document.execCommand("copy");
+    UI.toast("代碼已複製", "gain");
+  },
+  importSave() {
+    const area = document.getElementById("save-code-area");
+    if (!area.value) return UI.toast("請貼上代碼", "warn");
+    try {
+      const d = JSON.parse(decodeURIComponent(atob(area.value)));
+      if (d.player) {
+        Object.assign(Player, d.player);
+        GlobalSystem.data = d.global;
+        this.saveGame(true);
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (e) {
+      UI.toast("無效代碼", "warn");
+    }
+  },
+};
+
+const Crafting = {
+  render() {
+    const l = document.getElementById("recipe-list");
+    if (!l) return;
+    l.innerHTML = "";
+    // 防呆：確保 discoveredItems 存在
+    const discovered = GlobalSystem.data.discoveredItems || [];
+
+    CONFIG.recipes.forEach((r) => {
+      const mats = Object.keys(r.req);
+      const known = mats.some(
+        (mKey) =>
+          mKey !== "gold" && discovered.includes(CONFIG.materials[mKey]?.name)
+      );
+      if (!known && mats.length > 0) return;
+
+      const div = document.createElement("div");
+      div.className = "inv-item border-rare";
+      let canCraft = true;
+      let reqHtml = [];
+      for (let mKey in r.req) {
+        if (mKey === "gold") {
+          const has = Player.gold;
+          const need = r.req[mKey];
+          if (has < need) canCraft = false;
+          reqHtml.push(
+            `<span class="${
+              has >= need ? "text-common" : "text-uncommon"
+            }">${need}G</span>`
+          );
+        } else {
+          const matName = CONFIG.materials[mKey]
+            ? CONFIG.materials[mKey].name
+            : mKey;
+          const has = Player.inventory.filter(
+            (i) => i.baseName === matName
+          ).length;
+          const need = r.req[mKey];
+          if (has < need) canCraft = false;
+          reqHtml.push(
+            `<span class="${
+              has >= need ? "text-common" : "text-uncommon"
+            }">${matName} ${has}/${need}</span>`
+          );
+        }
+      }
+      div.innerHTML = `
+                <div style="flex:1"><div class="text-rare" style="font-weight:bold">${
+                  r.name
+                }</div>
+                <div style="font-size:0.8em; color:#aaa">${r.desc}</div>
+                <div style="font-size:0.8em; margin-top:4px;">${reqHtml.join(
+                  ", "
+                )}</div></div>
+                <button ${
+                  canCraft ? "" : "disabled"
+                } onclick="Crafting.craft('${
+        r.name
+      }')" class="btn-primary">合成</button>
+            `;
+      l.appendChild(div);
+    });
+    if (l.innerHTML === "")
+      l.innerHTML =
+        "<div style='text-align:center; padding:20px; color:#666'>收集素材以解鎖配方...</div>";
+  },
+  craft(rName) {
+    const r = CONFIG.recipes.find((x) => x.name === rName);
+    if (!r) return;
+    for (let mKey in r.req) {
+      if (mKey === "gold") Player.gold -= r.req[mKey];
+      else {
+        const matName = CONFIG.materials[mKey].name;
+        for (let i = 0; i < r.req[mKey]; i++) {
+          const idx = Player.inventory.findIndex((x) => x.baseName === matName);
+          if (idx > -1) Player.inventory.splice(idx, 1);
+        }
+      }
+    }
+    let item = {
+      id: Date.now(),
+      name: r.name,
+      type: r.type,
+      rarity: "epic",
+      stats: { ...r.stats },
+      setId: r.setId,
+      desc: r.desc,
+    };
+    if (r.type === "consumable") item.effect = r.effect;
+    Inventory.add(item);
+    UI.toast(`合成成功：${r.name}`, "gain");
+    this.render();
+    UI.updatePlayerPanel();
+  },
+};
+
+const Compendium = {
+  render() {
+    const l = document.getElementById("compendium-list");
+    if (!l) return;
+    l.innerHTML = "";
+    const items = GlobalSystem.data.discoveredItems || [];
+    if (items.length === 0) {
+      l.innerHTML = "<div style='text-align:center;color:#666'>尚無紀錄</div>";
+      return;
+    }
+    items.forEach((name) => {
+      const d = document.createElement("div");
+      d.className = "inv-item";
+      d.innerHTML = `<div class="inv-name text-common">${name}</div>`;
+      l.appendChild(d);
+    });
+  },
+};
+const Blacksmith = { render() {} };
