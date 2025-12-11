@@ -39,8 +39,8 @@
         <div class="player-summary">
           <div id="header-name" class="player-name">勇者</div>
           <div class="player-identity">
-            <span id="player-race" style="display: none"></span>
-            <span id="player-class" style="display: none"></span>
+            <span id="player-race"></span>
+            <span id="player-class"></span>
           </div>
           <div class="player-level">
             <span id="header-depth">F: 0</span> |
@@ -116,58 +116,57 @@
         </div>
 
         <div id="combat-screen" class="game-stage" style="display: none">
-          <div class="combat-container">
-            <div class="combat-unit enemy" id="unit-enemy">
-              <div class="unit-icon" id="enemy-icon">👹</div>
-              <div class="unit-info">
-                <div class="unit-name" id="enemy-name">敵人</div>
-                <div class="bar-container">
-                  <div id="enemy-hp-bar" class="bar-fill hp-fill"></div>
-                  <span id="enemy-hp-text" class="bar-text">100/100</span>
+          <div class="combat-container-v2">
+            <div class="combat-header">
+              <div class="fighter-box enemy">
+                <div class="f-icon" id="enemy-icon">👹</div>
+                <div class="f-info">
+                  <div class="f-name" id="enemy-name">敵人</div>
+                  <div class="hp-bar-bg">
+                    <div
+                      id="enemy-hp-bar"
+                      class="hp-bar-fill"
+                      style="width: 100%"
+                    ></div>
+                  </div>
+                  <div class="hp-text" id="enemy-hp-text">100/100</div>
                 </div>
-                <div class="bar-container ap-container">
-                  <div id="enemy-ap-bar" class="bar-fill ap-fill"></div>
+              </div>
+              <div class="vs-tag">VS</div>
+              <div class="fighter-box player">
+                <div class="f-icon" id="player-icon">🛡️</div>
+                <div class="f-info">
+                  <div class="f-name" id="player-name-combat">玩家</div>
+                  <div class="hp-bar-bg">
+                    <div
+                      id="player-hp-bar"
+                      class="hp-bar-fill p-fill"
+                      style="width: 100%"
+                    ></div>
+                  </div>
+                  <div class="hp-text" id="player-hp-text">100/100</div>
                 </div>
               </div>
             </div>
 
-            <div class="vs-divider">VS</div>
+            <div id="combat-log" class="combat-log-area">
+              <div class="log-entry sys">戰鬥開始...</div>
+            </div>
 
-            <div class="combat-unit player" id="unit-player">
-              <div class="unit-icon" id="player-icon">🛡️</div>
-              <div class="unit-info">
-                <div class="unit-name" id="player-name-combat">玩家</div>
-                <div class="bar-container">
-                  <div id="player-hp-bar" class="bar-fill hp-fill"></div>
-                  <span id="player-hp-text" class="bar-text">100/100</span>
-                </div>
-                <div class="bar-container ap-container">
-                  <div id="player-ap-bar" class="bar-fill ap-player-fill"></div>
-                </div>
+            <div class="combat-footer">
+              <div
+                id="combat-status-text"
+                style="color: #888; font-size: 0.9em"
+              >
+                ⚡ 自動戰鬥進行中...
               </div>
-            </div>
-          </div>
-
-          <div id="combat-log" class="log-box"></div>
-
-          <div class="combat-controls">
-            <div
-              class="combat-status"
-              style="
-                color: #888;
-                font-size: 0.9em;
-                display: flex;
-                align-items: center;
-              "
-            >
-              ⚡ 自動戰鬥進行中...
-            </div>
-            <div class="combat-btns">
-              <button id="btn-combat-escape" class="btn-secondary">
-                🏃 逃跑
-              </button>
-              <button id="btn-combat-skip" class="btn-primary">
-                ⏩ 跳過動畫
+              <button
+                id="btn-combat-end"
+                class="btn-primary"
+                style="display: none"
+                onclick="BattleSystem.finish()"
+              >
+                繼續冒險
               </button>
             </div>
           </div>

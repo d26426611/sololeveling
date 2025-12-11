@@ -1,473 +1,306 @@
-/* combat.js - Fix v2 */
-
-// 戰鬥日誌模板
-const LOG_TEMPLATES = {
-  attack: [
-    "{atker} 向 {dfder} 發起進攻",
-    "{atker} 揮舞武器斬向 {dfder}",
-    "{atker} 迅猛地突襲 {dfder}",
-  ],
-  crit: ["這一擊勢大力沉，造成暴擊!", "致命一擊!", "弱點擊破!"],
-  miss: ["{atker} 的攻擊落空了", "{dfder} 靈巧地閃過了"],
-  block: ["{dfder} 格擋了傷害", "{dfder} 的護甲抵消了衝擊"],
-};
-
-function getNarrative(type, params) {
-  const templates = LOG_TEMPLATES[type] || LOG_TEMPLATES["attack"];
-  let text = templates[Math.floor(Math.random() * templates.length)];
-  for (let key in params) text = text.replace(`{${key}}`, params[key]);
-  return text;
-}
+/* combat.js - 自動回合日誌版 */
 
 const BattleSystem = {
   active: false,
-  timer: null,
   enemy: null,
-  THRESHOLD: 1000,
-  combatStats: { critCount: 0 },
+  turnCount: 0,
+  logs: [],
 
-  // 初始化戰鬥
+  // 啟動戰鬥
   start(template, isElite = false) {
-    try {
-      this.active = true;
-      this.combatStats = { critCount: 0 };
-      if (this.timer) clearInterval(this.timer);
+    this.active = true;
+    this.turnCount = 0;
+    this.logs = [];
 
-      // 1. 數值計算 (包含防呆)
-      let biome =
-        CONFIG.biomes[Player.currentBiomeId] || CONFIG.biomes["plains"];
-      let scaling =
-        (biome.scaling || 1) *
-        (1 + Math.max(0, Player.depth - biome.minDepth) * 0.02);
+    // 計算敵人屬性 (沿用原有的成長公式)
+    let biome = CONFIG.biomes[Player.currentBiomeId] || CONFIG.biomes["plains"];
+    let baseScaling = biome.scaling;
+    let scaling = baseScaling * (1 + (Player.depth - biome.minDepth) * 0.02);
 
-      if (Player.currentWorld === "phantasm") scaling = Math.pow(scaling, 1.2);
-      else if (Player.currentWorld === "purgatory") scaling *= 2.0;
-      if (isElite) scaling *= 1.5;
-      if (template.type === "boss") scaling *= 3.0;
+    if (Player.currentWorld === "phantasm") scaling = Math.pow(scaling, 1.2);
+    if (Player.currentWorld === "purgatory") scaling *= 2.0;
+    if (isElite) scaling *= 1.5;
+    if (template.type === "boss") scaling *= 3.0;
 
-      // 確保速度至少為 1，防止除以零導致卡死
-      const enemySpeed = Math.max(
-        1,
-        Math.floor((template.speed || 100) * (1 + Player.depth * 0.005))
-      );
+    this.enemy = {
+      ...template,
+      maxHp: Math.floor(template.baseHp * scaling),
+      currentHp: Math.floor(template.baseHp * scaling),
+      atk: Math.floor(template.baseAtk * scaling),
+      speed: Math.floor(template.speed * (1 + Player.depth * 0.005)),
+      gold: Math.floor(template.gold * scaling),
+      isElite: isElite,
+    };
 
-      this.enemy = {
-        ...template,
-        maxHp: Math.floor(template.baseHp * scaling),
-        currentHp: Math.floor(template.baseHp * scaling),
-        atk: Math.floor(template.baseAtk * scaling),
-        speed: enemySpeed,
-        gold: Math.floor(template.gold * scaling),
-        actionGauge: 0,
-        isElite: isElite,
-      };
+    // UI 初始化
+    document.getElementById("enemy-name").innerText = `${
+      isElite ? "菁英 " : ""
+    }${this.enemy.name} (Lv.${Player.depth})`;
+    document.getElementById("enemy-icon").innerText = this.enemy.icon;
 
-      // 2. UI 更新
-      let pre = isElite ? "菁英 " : template.type === "boss" ? "👑 " : "";
-      document.getElementById(
-        "enemy-name"
-      ).innerText = `${pre}${this.enemy.name} (Lv.${Player.depth})`;
-      document.getElementById("enemy-icon").innerText = this.enemy.icon;
+    // 清空日誌並顯示開始訊息
+    const logBox = document.getElementById("combat-log");
+    logBox.innerHTML = "";
+    this.log(`遭遇了 ${this.enemy.name} (HP: ${this.enemy.maxHp})！`, "sys");
 
-      // 重置按鈕狀態
-      const btnSkip = document.getElementById("btn-combat-skip");
-      if (btnSkip) {
-        btnSkip.innerText = "⏩ 跳過動畫";
-        btnSkip.disabled = false;
-        btnSkip.onclick = () => this.skip();
-      }
+    // 更新血條
+    this.updateUI();
 
-      const logBox = document.getElementById("combat-log");
-      if (logBox) {
-        logBox.innerHTML = "";
-        this.log(
-          '<div class="log-entry" style="color:#ffd700">⚔️ 戰鬥開始！</div>'
-        );
-      }
+    // 切換按鈕狀態
+    document.getElementById("btn-combat-end").style.display = "none";
+    document.getElementById("combat-status-text").innerText =
+      "⚡ 自動戰鬥進行中...";
+    document.getElementById("combat-status-text").style.display = "block";
 
-      // 3. 玩家狀態重算
-      Player.actionGauge = 0;
-      const style = CONFIG.classes[Player.class]
-        ? CONFIG.classes[Player.class].style
-        : "standard";
-      if (style === "preemptive" || style === "stun_shot")
-        Player.actionGauge = this.THRESHOLD;
-
-      if (window.Game) Game.recalcPlayerStats();
-      Player.currentHp = Math.min(Player.currentHp, Player.stats.maxHp);
-
-      this.updateUI();
-
-      // 4. 強制啟動計時器
-      console.log("Battle started, timer initiating...");
-      this.startAutoTimer();
-    } catch (e) {
-      console.error("Battle Start Error:", e);
-      alert("戰鬥啟動失敗，請查看控制台或重整");
-      this.active = false;
-    }
+    // 啟動戰鬥循環
+    this.battleLoop();
   },
 
-  startAutoTimer() {
-    if (this.timer) clearInterval(this.timer);
-    // 使用 50ms 間隔，確保效能與流暢度平衡
-    this.timer = setInterval(() => {
-      if (this.active) {
-        this.nextTick();
+  // 自動戰鬥主循環 (Async/Await)
+  async battleLoop() {
+    // 初始等待
+    await this.sleep(800);
+
+    while (this.active && Player.currentHp > 0 && this.enemy.currentHp > 0) {
+      this.turnCount++;
+
+      // 速度判定先手 (簡單版：速度高者先攻，若差距極大可二連擊，這裡採輪流制)
+      let playerFirst = Player.stats.speed >= this.enemy.speed;
+
+      if (playerFirst) {
+        await this.executePlayerTurn();
+        if (this.enemy.currentHp <= 0) break;
+        await this.sleep(600);
+        await this.executeEnemyTurn();
       } else {
-        clearInterval(this.timer);
-      }
-    }, 50);
-  },
-
-  // 時間推進邏輯
-  nextTick() {
-    try {
-      if (!this.active) return;
-
-      // 確保速度是有效數值
-      let pSpd = Math.max(1, Player.stats.speed || 100);
-      let eSpd = Math.max(1, this.enemy.speed || 100);
-
-      // 計算 tick，避免無限大
-      let tick = Math.min(
-        (this.THRESHOLD - Player.actionGauge) / pSpd,
-        (this.THRESHOLD - this.enemy.actionGauge) / eSpd
-      );
-
-      // 如果 tick 計算異常（例如已經超過閾值），強制給一個極小值推進
-      if (tick <= 0 || !isFinite(tick)) tick = 0.1;
-
-      Player.actionGauge += tick * pSpd;
-      this.enemy.actionGauge += tick * eSpd;
-
-      // 觸發行動
-      if (Player.actionGauge >= this.THRESHOLD) {
-        this.executeTurn(Player, this.enemy);
-        Player.actionGauge -= this.THRESHOLD;
+        await this.executeEnemyTurn();
+        if (Player.currentHp <= 0) break;
+        await this.sleep(600);
+        await this.executePlayerTurn();
       }
 
-      // 檢查是否戰鬥已結束 (防止敵人死後還攻擊)
-      if (!this.active) return;
+      await this.sleep(800); // 回合間隔
+    }
 
-      if (
-        this.enemy.currentHp > 0 &&
-        this.enemy.actionGauge >= this.THRESHOLD
-      ) {
-        this.executeTurn(this.enemy, Player);
-        this.enemy.actionGauge -= this.THRESHOLD;
-      }
-
-      this.updateUI();
-      this.checkEnd();
-    } catch (e) {
-      console.error("Tick Error:", e);
-      this.active = false; // 停止以防無限報錯
+    if (this.active) {
+      this.endBattle();
     }
   },
 
-  // 執行回合 (攻擊)
-  executeTurn(atker, dfder) {
-    if (!this.active) return;
+  // 玩家回合
+  async executePlayerTurn() {
+    let dmg = Player.stats.atk;
+    // 浮動傷害 90%~110%
+    dmg = Math.floor(dmg * (0.9 + Math.random() * 0.2));
 
-    const isP = atker === Player;
-    const name = isP ? Player.name : this.enemy.name;
-    const targetName = isP ? this.enemy.name : Player.name;
-    const cInfo = CONFIG.classes[Player.class] || {};
-    const style = isP ? cInfo.style : this.enemy.isElite ? "elite" : "standard";
-
-    // 計算傷害
-    let atkVal = atker.stats ? atker.stats.atk : atker.atk;
-    let dmg = Math.floor(atkVal * (0.9 + Math.random() * 0.2));
-    let trueDmg = atker.stats ? atker.stats.true_dmg || 0 : 0;
-
-    // 職業特效
-    if (isP && Player.class === "berserker")
-      dmg = Math.floor(dmg * (1 + (1 - Player.currentHp / Player.stats.maxHp)));
-    if (isP && Player.class === "merchant")
-      dmg += Math.floor(Player.gold * 0.05);
+    // 職業特性與屬性計算
+    const style = CONFIG.classes[Player.class].style;
 
     // 暴擊判定
-    let isCrit = false;
-    let cRate = atker.stats ? atker.stats.crit || 0.05 : 0.05;
-    if (
-      isP &&
-      Player.class === "assassin" &&
-      dfder.currentHp / dfder.maxHp < 0.3
-    )
-      isCrit = true;
-    else if (Math.random() < cRate) isCrit = true;
+    let isCrit = Math.random() < (Player.stats.crit || 0.05);
+    if (isCrit) dmg = Math.floor(dmg * (Player.stats.crit_dmg || 1.5));
 
-    if (isCrit) {
-      let cd = atker.stats ? atker.stats.crit_dmg || 1.5 : 1.5;
-      dmg = Math.floor(dmg * cd);
-      if (isP) this.combatStats.critCount++;
-    }
+    // 閃避判定 (敵人閃避)
+    // 這裡簡化：敵人閃避率預設 5%，精英 10%
+    let enemyDodge = this.enemy.isElite ? 0.1 : 0.05;
+    if (style === "true_strike") enemyDodge = 0; // 法師必中
 
-    // 閃避判定
-    let dRate = dfder.stats ? dfder.stats.dodge || 0 : 0;
-    const trueStrike =
-      isP && (style === "true_strike" || style === "double_cast");
-    if (!trueStrike && Math.random() < dRate) {
-      this.log(
-        `<span style="color:#aaa">${getNarrative("miss", {
-          atker: name,
-          dfder: targetName,
-        })}</span>`
-      );
+    if (Math.random() < enemyDodge) {
+      this.log(`你攻擊 ${this.enemy.name}，但是被閃開了！`, "p-atk");
       return;
     }
 
-    // 防禦減傷
-    let defPct = dfder.stats ? dfder.stats.def || 0 : 0;
-    let drPct = dfder.stats ? dfder.stats.damage_reduce || 0 : 0;
-    let totalRed = Math.min(0.9, defPct + drPct);
-    if (!trueStrike && totalRed > 0) dmg = Math.floor(dmg * (1 - totalRed));
+    // 真實傷害
+    let trueDmg = Player.stats.true_dmg || 0;
+    let finalDmg = Math.max(1, dmg + trueDmg);
 
-    // 格擋判定
-    let bRate = dfder.stats ? dfder.stats.block || 0 : 0;
-    let isBlock = false;
-    if (!trueStrike && Math.random() < bRate) {
-      isBlock = true;
-      dmg = Math.floor(dmg * 0.5);
-      // 騎士反擊
-      if (!isP && style === "counter_attack") {
-        let cDmg = Math.floor(Player.stats.atk * 0.8);
-        this.enemy.currentHp -= cDmg;
-        UI.showDamage("enemy", cDmg);
-        this.log(`<span style="color:#42a5f5">🛡️ 反擊! 造成 ${cDmg}</span>`);
-      }
-    }
-
-    // 執行傷害扣除
-    let totalDmg = Math.max(1, dmg + trueDmg);
-    let hits = 1;
-    if (isP && style === "multi_hit") hits = cInfo.hits || 2;
-    let mChance = atker.stats ? atker.stats.multi_hit_chance || 0 : 0;
-    if (Math.random() < mChance) hits++;
-
-    for (let i = 0; i < hits; i++) {
-      dfder.currentHp -= totalDmg;
-      UI.showDamage(
-        isP ? "enemy" : "player",
-        totalDmg,
-        isCrit ? "crit" : "damage"
-      );
-      UI.shake(isP ? "enemy" : "player");
-
-      let color = isP ? "#fff" : "#ef5350";
-      let txt = isCrit ? "暴擊" : isBlock ? "格擋" : "攻擊";
-      this.log(
-        `<span style="color:${color}">${
-          atker === Player ? "你" : this.enemy.name
-        } ${txt} 造成 <b>${totalDmg}</b> 傷害</span>`
-      );
-
-      // 反傷
-      let rRate = dfder.stats ? dfder.stats.reflect || 0 : 0;
-      if (rRate > 0) {
-        let rDmg = Math.floor(totalDmg * rRate);
-        if (rDmg > 0) {
-          atker.currentHp -= rDmg;
-          UI.showDamage(isP ? "player" : "enemy", rDmg);
-        }
-      }
-
-      // 吸血
-      if (isP && Player.stats.lifesteal > 0) {
-        let heal = Math.floor(totalDmg * Player.stats.lifesteal);
-        if (heal > 0) {
-          Player.currentHp = Math.min(
-            Player.stats.maxHp,
-            Player.currentHp + heal
-          );
-          UI.showDamage("player", `+${heal}`, "heal");
-        }
-      }
-
-      if (dfder.currentHp <= 0 || atker.currentHp <= 0) break;
-    }
-
-    // 再生
-    if (isP && Player.stats.hp_regen > 0) {
-      Player.currentHp = Math.min(
-        Player.stats.maxHp,
-        Player.currentHp + Player.stats.hp_regen
-      );
-    }
-  },
-
-  // 跳過戰鬥 / 強制結束
-  skip() {
-    if (!this.active) return;
-    this.log('<span style="color:orange">⚡ 快速結算中...</span>');
-    this.enemy.currentHp = 0;
+    // 執行傷害
+    this.enemy.currentHp -= finalDmg;
     this.updateUI();
-    this.checkEnd(); // 手動觸發結束檢查
-  },
 
-  escape() {
-    if (!this.active) return;
-    const chance = 0.5 + (Player.stats.speed - this.enemy.speed) * 0.002;
-    if (Math.random() < chance) {
-      UI.toast("逃跑成功!", "gain");
-      this.active = false;
-      if (this.timer) clearInterval(this.timer);
-      this.exitCombat();
-    } else {
-      UI.toast("逃跑失敗!", "warn");
-      Player.actionGauge = 0; // 懲罰
+    let critText = isCrit ? " <span class='val-crit'>(暴擊!)</span>" : "";
+    this.log(
+      `你對 ${this.enemy.name} 造成 <span class='val-dmg'>${finalDmg}</span>${critText} 傷害。`,
+      "p-atk"
+    );
+
+    // 吸血
+    if (Player.stats.lifesteal > 0) {
+      let heal = Math.floor(finalDmg * Player.stats.lifesteal);
+      if (heal > 0) {
+        Player.currentHp = Math.min(
+          Player.stats.maxHp,
+          Player.currentHp + heal
+        );
+        this.log(
+          `你吸取了 <span class='val-heal'>${heal}</span> 點生命。`,
+          "p-atk"
+        );
+        this.updateUI();
+      }
+    }
+
+    // 連擊判定 (職業特性)
+    if (style === "multi_hit" || style === "double_cast") {
+      if (Math.random() < 0.3) {
+        // 30% 機率觸發連擊
+        await this.sleep(300);
+        let extraDmg = Math.floor(finalDmg * 0.5);
+        this.enemy.currentHp -= extraDmg;
+        this.log(
+          `⚡ 追加攻擊！造成 <span class='val-dmg'>${extraDmg}</span> 傷害。`,
+          "p-atk"
+        );
+        this.updateUI();
+      }
     }
   },
 
-  // 檢查戰鬥結束 (最關鍵的修復部分)
-  checkEnd() {
-    // 1. 玩家死亡
-    if (Player.currentHp <= 0) {
-      this.active = false;
-      if (this.timer) clearInterval(this.timer);
+  // 敵人回合
+  async executeEnemyTurn() {
+    let dmg = this.enemy.atk;
+    dmg = Math.floor(dmg * (0.9 + Math.random() * 0.2));
 
-      // 確保血量顯示不為負
-      Player.currentHp = 0;
-      this.updateUI();
-
-      if (Player.flags.mark_of_sin) {
-        Game.enterWorld("purgatory");
-        return;
-      }
-
-      GlobalSystem.checkLegacy(Player.inventory);
-      GlobalSystem.data.totalDeaths++;
-      GlobalSystem.save();
-
-      this.log(
-        '<div class="log-entry" style="color:red; font-weight:bold">你倒下了...</div>'
-      );
-
-      // 使用 setTimeout 確保 UI 渲染完畢後再彈出 alert
-      setTimeout(() => {
-        alert("你倒下了...\n(點擊確定重新開始)");
-        location.reload();
-      }, 500);
+    // 玩家閃避
+    if (Math.random() < (Player.stats.dodge || 0)) {
+      this.log(`你靈巧地閃過了 ${this.enemy.name} 的攻擊！`, "e-atk");
       return;
     }
 
-    // 2. 敵人死亡
-    else if (this.enemy.currentHp <= 0) {
-      // 防止重複結算
-      if (!this.active) return;
+    // 玩家格擋
+    let isBlocked = false;
+    if (Math.random() < (Player.stats.block || 0)) {
+      isBlocked = true;
+      dmg = Math.floor(dmg * 0.5); // 格擋減半
+    }
 
-      this.active = false;
-      if (this.timer) clearInterval(this.timer);
+    // 玩家減傷 (防禦力)
+    let defReduce = Player.stats.def || 0; // 百分比減傷
+    dmg = Math.floor(dmg * (1 - defReduce));
+    dmg = Math.max(1, dmg);
 
-      // 確保敵人血量顯示不為負
-      this.enemy.currentHp = 0;
-      this.updateUI();
+    Player.currentHp -= dmg;
+    this.updateUI();
 
-      // 獎勵結算
-      let gBonus = Player.stats ? Player.stats.gold_drop || 1.0 : 1.0;
-      let g = Math.floor(this.enemy.gold * gBonus);
-      Player.gold += g;
-      this.log(`<span style="color:yellow">戰鬥勝利！獲得 ${g} 金幣</span>`);
+    let blockText = isBlocked ? " <span class='val-block'>[格擋]</span>" : "";
+    this.log(
+      `${this.enemy.name} 攻擊你造成 <span class='val-dmg'>${dmg}</span>${blockText} 傷害。`,
+      "e-atk"
+    );
+
+    // 反傷 (Reflect)
+    if (Player.stats.reflect > 0) {
+      let rDmg = Math.floor(dmg * Player.stats.reflect);
+      if (rDmg > 0) {
+        this.enemy.currentHp -= rDmg;
+        this.log(
+          `你的反甲造成 <span class='val-dmg'>${rDmg}</span> 反傷！`,
+          "p-atk"
+        );
+        this.updateUI();
+      }
+    }
+  },
+
+  // 結算
+  endBattle() {
+    this.active = false;
+    document.getElementById("combat-status-text").style.display = "none";
+
+    if (Player.currentHp <= 0) {
+      this.log("你倒下了...", "sys");
+      // 死亡處理
+      if (Player.flags.mark_of_sin) {
+        setTimeout(() => Game.enterWorld("purgatory"), 1500);
+      } else {
+        GlobalSystem.data.totalDeaths++;
+        GlobalSystem.save();
+        setTimeout(() => {
+          alert("勝敗乃兵家常事... (點擊確定重新挑戰)");
+          location.reload();
+        }, 1000);
+      }
+    } else {
+      // 勝利
+      let gBonus = Player.stats.gold_drop || 1.0;
+      let gold = Math.floor(this.enemy.gold * gBonus);
+      Player.gold += gold;
+
+      this.log(
+        `<br>戰鬥勝利！獲得 <span style='color:#ffd700'>${gold} G</span>`,
+        "sys"
+      );
 
       // 掉落
-      if (this.enemy.type === "boss") {
-        if (Player.depth >= 300 && Math.random() < 0.1)
-          Inventory.add(CONFIG.specialItems.soul_anchor);
-        Game.completeBiome();
-      } else if (this.enemy.mat) {
+      if (this.enemy.mat) {
         Inventory.add({
           id: Date.now(),
           type: "material",
           ...CONFIG.materials[this.enemy.mat],
           rarity: "common",
         });
+        this.log(`獲得素材: ${CONFIG.materials[this.enemy.mat].name}`, "sys");
       }
-      if (Math.random() < 0.3) Inventory.add(ItemSystem.generate());
 
+      // 裝備掉落
+      if (Math.random() < 0.3) {
+        const item = ItemSystem.generate();
+        Inventory.add(item);
+        this.log(
+          `獲得裝備: <span class='${CONFIG.rarity[item.rarity].color}'>${
+            item.name
+          }</span>`,
+          "sys"
+        );
+      }
+
+      if (this.enemy.type === "boss") {
+        Game.completeBiome();
+      }
+
+      // 顯示離開按鈕
+      document.getElementById("btn-combat-end").style.display = "inline-block";
       StorageSystem.saveGame();
-
-      // 延遲跳轉下一層
-      setTimeout(() => {
-        try {
-          // 檢查是否有覺醒
-          const awk = window.EventDirector
-            ? EventDirector.checkAwakening(this.combatStats)
-            : null;
-          if (awk) {
-            Game.triggerAwakening(awk);
-          } else {
-            this.exitCombat();
-          }
-        } catch (e) {
-          console.error("End Check Error:", e);
-          // 如果出錯，強制離開
-          this.exitCombat();
-        }
-      }, 800);
     }
   },
 
-  exitCombat() {
-    try {
-      if (window.Game) {
-        Game.openScreen("event-screen");
-        Game.updateHeader();
-        Game.nextDepth();
-      } else {
-        console.error("Game object missing!");
-        location.reload(); // 嚴重錯誤，重整
-      }
-    } catch (e) {
-      console.error("Exit Combat Failed:", e);
-      // 如果自動跳轉失敗，將跳過按鈕變成手動離開按鈕
-      const btn = document.getElementById("btn-combat-skip");
-      if (btn) {
-        btn.innerText = "🚪 離開戰鬥 (Debug)";
-        btn.onclick = () => {
-          document.getElementById("combat-screen").style.display = "none";
-          document.getElementById("event-screen").style.display = "block";
-          Game.nextDepth();
-        };
-      }
-    }
+  finish() {
+    // 點擊按鈕後離開戰鬥畫面
+    Game.exitCombat();
   },
 
+  // 輔助功能
   updateUI() {
-    try {
-      const up = (p, c, m, g) => {
-        const elBar = document.getElementById(`${p}-hp-bar`);
-        const elTxt = document.getElementById(`${p}-hp-text`);
-        const elAp = document.getElementById(`${p}-ap-bar`);
+    const pPct = (Player.currentHp / Player.stats.maxHp) * 100;
+    const ePct = (this.enemy.currentHp / this.enemy.maxHp) * 100;
 
-        // 視覺修正：不顯示負數，也不顯示超過100%
-        const pct = Math.max(0, Math.min(100, (c / m) * 100));
-        const apPct = Math.max(0, Math.min(100, (g / this.THRESHOLD) * 100));
+    document.getElementById("player-hp-bar").style.width = `${Math.max(
+      0,
+      pPct
+    )}%`;
+    document.getElementById("player-hp-text").innerText = `${Math.floor(
+      Player.currentHp
+    )}/${Player.stats.maxHp}`;
 
-        if (elBar) elBar.style.width = `${pct}%`;
-        if (elTxt) elTxt.innerText = `${Math.max(0, Math.floor(c))}/${m}`; // 顯示文字也過濾負數
-        if (elAp) elAp.style.width = `${apPct}%`;
-      };
-      up("player", Player.currentHp, Player.stats.maxHp, Player.actionGauge);
-      up(
-        "enemy",
-        this.enemy.currentHp,
-        this.enemy.maxHp,
-        this.enemy.actionGauge
-      );
-    } catch (e) {
-      // UI 更新失敗不應導致邏輯崩潰，忽略錯誤
-    }
+    document.getElementById("enemy-hp-bar").style.width = `${Math.max(
+      0,
+      ePct
+    )}%`;
+    document.getElementById("enemy-hp-text").innerText = `${Math.floor(
+      this.enemy.currentHp
+    )}/${this.enemy.maxHp}`;
   },
 
-  log(msg) {
-    const b = document.getElementById("combat-log");
-    if (!b) return;
+  log(msg, type) {
+    const box = document.getElementById("combat-log");
     const div = document.createElement("div");
-    div.className = "log-entry";
+    div.className = `log-entry ${type}`;
     div.innerHTML = msg;
-    b.appendChild(div);
-    if (b.children.length > 50) b.removeChild(b.firstChild);
-    b.scrollTop = b.scrollHeight;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  },
+
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   },
 };
