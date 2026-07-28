@@ -101,16 +101,7 @@
             <h2 id="event-title" class="event-title">事件標題</h2>
             <div id="event-desc" class="event-desc">事件描述...</div>
 
-            <div class="controls">
-              <button id="btn-event-main" class="btn-primary">主要行動</button>
-              <button
-                id="btn-event-sub"
-                class="btn-secondary"
-                style="display: none"
-              >
-                次要行動
-              </button>
-            </div>
+            <div id="event-controls" class="controls"></div>
             <div id="event-content" style="margin-top: 20px; width: 100%"></div>
           </div>
         </div>
@@ -161,19 +152,8 @@
               "
             >
               <label
-                ><input type="checkbox" id="opt-auto-combat" /> 自動戰鬥</label
-              >
-              <label style="margin-left: 10px"
                 ><input type="checkbox" id="opt-skip-combat" /> 跳過動畫</label
               >
-            </div>
-            <div class="combat-btns">
-              <button id="btn-combat-next" class="btn-primary" disabled>
-                攻擊
-              </button>
-              <button id="btn-combat-auto" class="btn-secondary" disabled>
-                自動
-              </button>
             </div>
           </div>
         </div>
@@ -182,6 +162,8 @@
       <section id="action-panel">
         <div class="tabs">
           <button class="tab-btn active" data-tab="inventory">🎒 背包</button>
+          <button class="tab-btn" data-tab="crafting">⚗️ 合成</button>
+          <button class="tab-btn" data-tab="blacksmith">🔨 鐵匠</button>
           <button class="tab-btn" data-tab="compendium">📚 圖鑑</button>
           <button class="tab-btn" data-tab="system">⚙️ 系統</button>
         </div>
@@ -191,20 +173,17 @@
             <div id="recipe-list" class="inventory-list compact"></div>
           </div>
 
+          <div id="tab-blacksmith" class="tab-pane">
+            <div id="blacksmith-list" class="inventory-list compact"></div>
+          </div>
+
           <div id="tab-inventory" class="tab-pane active">
             <div class="inv-filters">
-              <button
-                class="filter-btn active"
-                onclick="Inventory.render('all')"
-              >
-                全部
-              </button>
-              <button class="filter-btn" onclick="Inventory.render('equip')">
-                裝備
-              </button>
-              <button class="filter-btn" onclick="Inventory.render('mat')">
-                道具
-              </button>
+              <button class="filter-btn active" data-filter="all">全部</button>
+              <button class="filter-btn" data-filter="weapon">武器</button>
+              <button class="filter-btn" data-filter="armor">防具</button>
+              <button class="filter-btn" data-filter="accessory">飾品</button>
+              <button class="filter-btn" data-filter="mat">道具</button>
             </div>
             <div class="info-box small" id="inv-count">0 | ✨0</div>
             <div id="inventory-list" class="inventory-list compact"></div>
@@ -217,15 +196,8 @@
 
           <div id="tab-system" class="tab-pane">
             <div class="system-group">
-              <button
-                class="btn-primary"
-                onclick="StorageSystem.saveGame(true)"
-              >
-                手動存檔
-              </button>
-              <button class="btn-danger" onclick="StorageSystem.hardReset()">
-                ⚠️ 重置進度
-              </button>
+              <button class="btn-primary" data-action="save">手動存檔</button>
+              <button class="btn-danger" data-action="reset">⚠️ 重置進度</button>
             </div>
             <hr />
             <textarea
@@ -234,8 +206,8 @@
               placeholder="存檔代碼..."
             ></textarea>
             <div class="system-group">
-              <button onclick="StorageSystem.exportSave()">匯出</button>
-              <button onclick="StorageSystem.importSave()">匯入</button>
+              <button data-action="export">匯出</button>
+              <button data-action="import">匯入</button>
             </div>
           </div>
         </div>
@@ -254,9 +226,6 @@
       </div>
     </div>
 
-    <script src="data.js"></script>
-    <script src="core.js"></script>
-    <script src="combat.js"></script>
-    <script src="main.js"></script>
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>

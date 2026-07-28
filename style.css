@@ -35,12 +35,14 @@ body {
   overflow: hidden;
 }
 
-/* RWD 響應式佈局 */
+/* RWD 響應式佈局：整體畫面最寬鎖定 800px、置中，寬螢幕桌機也不會被拉得過寬 */
 #app {
   display: grid;
-  grid-template-columns: 250px 1fr 300px;
+  grid-template-columns: 220px 1fr 280px;
   grid-template-rows: 100vh;
   width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
   height: 100vh;
 }
 
@@ -419,4 +421,138 @@ button:disabled {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(255, 152, 0, 0.1);
+}
+.select-btn.locked {
+  color: #555;
+  border-style: dashed;
+  cursor: help;
+}
+.select-btn.locked:hover {
+  color: #888;
+  border-color: #555;
+}
+
+.inv-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.filter-btn {
+  flex: 1;
+  padding: 6px;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  color: #aaa;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.filter-btn.active {
+  color: #fff;
+  border-color: var(--accent);
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.merchant-section h4 {
+  margin: 0 0 6px;
+  color: #ddd;
+  font-size: 0.95em;
+}
+
+/* Toast 通知：舊版完全沒有樣式規則，訊息會被排到 #app(100vh) 下方看不見 —— 補上固定定位與型別配色 */
+#toast-container {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-sub);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.toast.gain {
+  border-left-color: #4caf50;
+}
+.toast.heal {
+  border-left-color: #66bb6a;
+}
+.toast.warn {
+  border-left-color: #ef5350;
+}
+.toast.info {
+  border-left-color: var(--accent);
+}
+
+/* 確認彈窗：舊版同樣沒有樣式，補上與 full-screen-overlay 一致的置中卡片樣式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1500;
+  justify-content: center;
+  align-items: center;
+}
+.modal-content {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+}
+.modal-content h3 {
+  margin-bottom: 10px;
+}
+.modal-content p {
+  color: var(--text-sub);
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* 戰鬥日誌條目型別配色：舊版只定義了 .log-box 容器，內部訊息完全沒有顏色區分 */
+.log-entry {
+  padding: 2px 0;
+  line-height: 1.4;
+}
+.log-entry.p-atk {
+  color: #90caf9;
+}
+.log-entry.e-atk {
+  color: #ef9a9a;
+}
+.log-entry.sys {
+  color: var(--text-sub);
+  font-style: italic;
+}
+.val-dmg {
+  font-weight: bold;
+  color: var(--hp-color);
+}
+.val-crit {
+  font-weight: bold;
+  color: var(--accent);
+}
+.val-heal {
+  font-weight: bold;
+  color: #66bb6a;
 }

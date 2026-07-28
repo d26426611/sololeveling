@@ -1,0 +1,133 @@
+export const classes = {
+    // --- T1 基礎職業 ---
+    warrior: {
+      name: "戰士",
+      desc: "精通近戰武器，攻守兼備。",
+      bonus: { maxHp: 20, atk: 5 },
+      style: "standard",
+      promotesTo: "knight",
+      preferred: ["sword", "axe", "mace"],
+    },
+    thief: {
+      name: "盜賊",
+      desc: "身手敏捷，擅長偷襲與暴擊。",
+      bonus: { speed: 15, crit: 0.1 },
+      style: "multi_hit",
+      hits: 2,
+      promotesTo: "assassin",
+      preferred: ["dagger"],
+    },
+    archer: {
+      name: "弓手",
+      desc: "遠程狙擊，先發制人。",
+      bonus: { speed: 10, atk: 8 },
+      style: "preemptive",
+      promotesTo: "ranger",
+      preferred: ["bow"],
+    },
+    mage: {
+      name: "法師",
+      desc: "掌控元素，攻擊無法被閃避。",
+      bonus: { atk: 15, maxHp: -10 },
+      style: "true_strike",
+      promotesTo: "archmage",
+      preferred: ["staff"],
+    },
+    cleric: {
+      name: "牧師",
+      desc: "受到神之加護，自我恢復能力強。",
+      bonus: { maxHp: 30, def: 0.1 },
+      style: "regen",
+      promotesTo: "paladin",
+      preferred: ["mace", "staff"],
+    },
+
+    // --- T2 進階職業（透過 T1 職業「升職」取得，見 promotesTo；不會出現在初始創角選項） ---
+    knight: {
+      name: "皇家騎士",
+      desc: "銅牆鐵壁，擅長格擋反擊。",
+      bonus: { maxHp: 100, def: 0.2 },
+      style: "counter_attack",
+      hidden: true,
+      preferred: ["sword", "mace"],
+    },
+    assassin: {
+      name: "暗影刺客",
+      desc: "陰影中的死神，追求極致暴擊。",
+      bonus: { atk: 30, crit: 0.3 },
+      style: "execute",
+      hidden: true,
+      preferred: ["dagger"],
+    },
+    ranger: {
+      name: "叢林遊俠",
+      desc: "箭無虛發，連續射擊。",
+      bonus: { speed: 25, atk: 15 },
+      style: "stun_shot",
+      hidden: true,
+      preferred: ["bow"],
+    },
+    archmage: {
+      name: "大魔導士",
+      desc: "毀滅魔法的化身，雙重詠唱。",
+      bonus: { atk: 50, speed: 5 },
+      style: "double_cast",
+      hidden: true,
+      preferred: ["staff"],
+    },
+    paladin: {
+      name: "聖騎士",
+      desc: "聖光守護，愈戰愈強。",
+      bonus: { maxHp: 150, hp_regen: 10 },
+      style: "scaling_atk",
+      hidden: true,
+      preferred: ["mace", "sword"],
+    },
+
+    // --- 特殊條件解鎖職業 ---
+    berserker: {
+      name: "狂戰士",
+      desc: "[隱藏] 血量越低攻擊越高，放棄防禦。",
+      hidden: true,
+      bonus: { atk: 20, maxHp: 50 },
+      style: "blood_rage",
+      unlockCheck: (p) => p.currentHp / p.stats.maxHp < 0.05,
+      preferred: ["axe"],
+    },
+    merchant: {
+      name: "豪商",
+      desc: "[隱藏] 金錢就是力量，能用錢解決戰鬥。",
+      hidden: true,
+      bonus: { gold_drop: 0.5 },
+      style: "money_power",
+      unlockCheck: (p) => p.gold >= 3000,
+      preferred: ["dagger", "staff"],
+    },
+    gambler: {
+      name: "賭徒",
+      desc: "[隱藏] 運氣決定一切，傷害浮動巨大。",
+      hidden: true,
+      bonus: { crit: 0.5, dodge: -9.0 },
+      style: "roulette",
+      unlockCheck: (p) => false, // 暫定只能透過事件轉職
+      preferred: ["dagger"],
+    },
+
+    // --- 後期專屬職業 ---
+    hell_knight: {
+      name: "地獄騎士",
+      desc: "[煉獄] 燃燒靈魂，將業力轉化為真實傷害。",
+      hidden: true,
+      bonus: { atk: 80, def: 0.1 },
+      style: "karma_strike",
+      preferred: ["sword", "axe"],
+    },
+    dream_weaver: {
+      name: "織夢者",
+      desc: "[幻界] 操縱理智，使現實扭曲。",
+      hidden: true,
+      bonus: { speed: 40, atk: 40 },
+      style: "sanity_control",
+      preferred: ["staff", "bow"],
+    },
+};
