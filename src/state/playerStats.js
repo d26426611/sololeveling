@@ -1,5 +1,6 @@
 import { CONFIG } from "../data/index.js";
 import { Player } from "./player.js";
+import { emit } from "../systems/combatModifierPipeline.js";
 
 // 依種族/職業/裝備/套裝重新計算最終屬性。獨立成一個只依賴 CONFIG 與 Player 的模組，
 // 讓 Inventory / Blacksmith / Crafting 等系統都能直接呼叫，不需要透過 Game controller，避免循環 import。
@@ -74,7 +75,8 @@ export function recalcPlayerStats() {
 // sanity_regen（虛空行者套裝提供）：套裝資料定義了這個數值卻從沒被讀取過，
 // 在這裡直接抵銷部分理智消耗，等同「每層小幅回復理智」。
 export function applySanityLoss(amount) {
-  const cost = Player.race === "void_walker" ? Math.ceil(amount / 2) : amount;
-  const net = Math.max(0, cost - (Player.stats.sanity_regen || 0));
+  const sanityCtx = { race: Player.race, amount, cost: amount };
+  emit("sanityLoss", sanityCtx);
+  const net = Math.max(0, sanityCtx.cost - (Player.stats.sanity_regen || 0));
   Player.sanity = Math.min(100, Math.max(0, Player.sanity - net));
 }

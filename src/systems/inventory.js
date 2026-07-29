@@ -3,6 +3,7 @@ import { Player } from "../state/player.js";
 import { GlobalSystem } from "../state/globalSystem.js";
 import { recalcPlayerStats } from "../state/playerStats.js";
 import { toast } from "../ui/toast.js";
+import { emit } from "./combatModifierPipeline.js";
 
 const DISASSEMBLE_DUST = {
   common: 1,
@@ -58,7 +59,9 @@ export const Inventory = {
     if (!item || item.type !== "consumable") return null;
 
     // 亡靈種族特性：非生者無法使用藥水恢復生命。
-    if (item.effect?.hp && Player.race === "undead") {
+    const potionCtx = { race: Player.race, hasHpEffect: !!item.effect?.hp, blocked: false };
+    emit("beforePotionUse", potionCtx);
+    if (potionCtx.blocked) {
       toast("亡靈無法使用藥水！", "warn");
       return null;
     }
