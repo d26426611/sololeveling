@@ -10,6 +10,7 @@ import { EventDirector, configureEventDirector } from "./eventDirector.js";
 import { registerClassStyleModifiers } from "./classStyleModifiers.js";
 import { registerRaceTraitModifiers } from "./raceTraitModifiers.js";
 import { registerSetBonusModifiers } from "./setBonusModifiers.js";
+import { isRiftActive, tickRift, rollForRift } from "./riftSystem.js";
 import { renderSetup, getSetupSelection } from "../ui/setupScreen.js";
 import { renderEventStage, initEventControls } from "../ui/eventScreen.js";
 import { showEventScreen } from "../ui/screens.js";
@@ -153,6 +154,12 @@ export const Game = {
   nextDepth() {
     Player.depth++;
     Player.biomeDepth++;
+
+    // Rift：只在無盡循環階段才可能發生，跟業力印記死亡/幻界之鑰這兩條「刻意進入次元」
+    // 的路徑完全獨立——已經身處 Rift 就倒數層數，否則才骰新的 Rift 觸發機率。
+    if (isRiftActive()) tickRift();
+    else rollForRift();
+
     if (Player.currentWorld === "phantasm") applySanityLoss(1);
 
     // 模擬測試發現：舊版每層固定回 5 點血，在 maxHp 已經是 150~500 的正常進度下根本無感，
@@ -207,7 +214,13 @@ export const Game = {
   // 作為「無盡爬塔」清完所有既定區域後的終局迴圈，而不是卡住不動。
   advanceBiome() {
     const entries = normalBiomeEntries();
-    if (Player.biomeIndex < entries.length - 1) Player.biomeIndex++;
+    if (Player.biomeIndex < entries.length - 1) {
+      Player.biomeIndex++;
+    } else {
+      // 已經在最後一個區域(沙漠)又打贏一次王：初次清完 7 區的「一輪破關」已經結束，
+      // 從這裡開始才是真正的無盡循環——Rift 只在這個階段之後才可能觸發。
+      Player.endlessLoopActive = true;
+    }
     Player.biomeDepth = 0;
     Player.currentBiomeId = biomeIdByIndex(Player.biomeIndex);
     updatePlayerPanel();

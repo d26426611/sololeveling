@@ -6,6 +6,8 @@ function freshPlayerData() {
     depth: 0,
     biomeDepth: 0, // 目前區域內已走幾層，換區域時歸零；決定菁英/區域王的觸發節奏
     biomeIndex: 0, // 目前是第幾個一般區域（依 CONFIG.biomes[x].order 排序），打贏區域王才會 +1
+    endlessLoopActive: false, // 已清完所有一般區域、開始在最後一區重複迴圈，Rift 只在此階段可能觸發
+    rift: null, // 非 null 時代表正身處 Rift 短暫拉進的次元片段，見 game/riftSystem.js
     gold: 0,
     currentHp: 100,
     currentBiomeId: "plains",
