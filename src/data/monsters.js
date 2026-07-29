@@ -267,10 +267,16 @@ export const monsters = {
       icon: "💀",
       species: "undead",
       type: "common",
-      baseHp: 305,
-      baseAtk: 68,
+      // 模擬測試發現：這隻怪物列在 cave.monsters 裡，但數值卻是墓地(graveyard)那個級距的
+      // (跟 ghost/skeleton_mage/ghoul 同一批寫在資料檔裡，baseHp/baseAtk 都對應到後期區域)，
+      // 導致洞穴玩家隨機遇到牠時撞上一堵斷崖式的牆——其他三隻洞穴怪 baseHp 51~102、
+      // baseAtk 17~23，這隻卻是 305/68，等於變相的隱藏菁英/王級對手。
+      // 沒有其他區域引用這個 key（墓地用的是 skeleton_mage，不是 skeleton），
+      // 直接調回洞穴應有的級距即可，不影響任何其他地方。
+      baseHp: 90,
+      baseAtk: 20,
       speed: 80,
-      gold: 90,
+      gold: 45,
       mat: "soul_dust",
       desc: "動作僵硬但不知疲倦。",
     },
