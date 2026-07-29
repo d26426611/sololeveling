@@ -6,6 +6,7 @@ export const GlobalSystem = {
     unlockedRaces: ["human", "elf", "orc", "dwarf", "halfling"],
     unlockedClasses: ["warrior", "thief", "archer", "mage", "cleric"],
     discoveredItems: [],
+    discoveredEvents: [],
     unlockedAchievements: [],
     maxDepth: 0,
     totalDeaths: 0,
@@ -27,6 +28,7 @@ export const GlobalSystem = {
         if (!this.data.unlockedRaces) this.data.unlockedRaces = [...this.defaultData.unlockedRaces];
         if (!this.data.unlockedClasses) this.data.unlockedClasses = [...this.defaultData.unlockedClasses];
         if (!this.data.discoveredItems) this.data.discoveredItems = [];
+        if (!this.data.discoveredEvents) this.data.discoveredEvents = [];
         if (!this.data.unlockedAchievements) this.data.unlockedAchievements = [];
       }
     } catch (e) {
@@ -43,6 +45,16 @@ export const GlobalSystem = {
     if (!name) return;
     if (!this.data.discoveredItems.includes(name)) {
       this.data.discoveredItems.push(name);
+      this.save();
+    }
+  },
+
+  // 事件日誌：跟 unlockItem() 同一個模式，只是用事件 id（穩定、可列舉）而不是物品名稱
+  // （物品名稱會因前後綴隨機組合而不穩定）當 key。
+  unlockEvent(id) {
+    if (!id) return;
+    if (!this.data.discoveredEvents.includes(id)) {
+      this.data.discoveredEvents.push(id);
       this.save();
     }
   },

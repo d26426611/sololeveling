@@ -72,6 +72,18 @@ test("checkCollectionMilestones() unlocks all_races/all_classes only once every 
   assert.ok(GlobalSystem.data.unlockedAchievements.includes("all_classes"));
 });
 
+test("unlockEvent() records an event id once", () => {
+  GlobalSystem.unlockEvent("spring");
+  assert.ok(GlobalSystem.data.discoveredEvents.includes("spring"));
+  GlobalSystem.unlockEvent("spring");
+  assert.equal(GlobalSystem.data.discoveredEvents.filter((id) => id === "spring").length, 1);
+});
+
+test("unlockEvent() ignores a falsy id", () => {
+  GlobalSystem.unlockEvent(undefined);
+  assert.equal(GlobalSystem.data.discoveredEvents.length, 0);
+});
+
 test("achievements persist across a reload (save/load round trip)", () => {
   GlobalSystem.unlockAchievement("first_kill", () => {});
   GlobalSystem.init();

@@ -229,6 +229,7 @@ export const Game = {
   },
 
   triggerChest() {
+    GlobalSystem.unlockEvent("chest");
     const item = ItemSystem.generate();
     Inventory.add(item);
     const gold = Math.floor(Math.random() * 50) + 10;

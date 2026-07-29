@@ -66,4 +66,30 @@ export function renderCompendium() {
       `;
     })
     .join("");
+
+  renderEventLog();
+}
+
+// 事件日誌：跟成就一樣不重新發明追蹤機制，直接讀 discoveredEvents（EventDirector.trigger()/
+// triggerChest() 各自在觸發當下記一次），已遇過的顯示名稱/icon，沒遇過的顯示 ??? 佔位。
+function renderEventLog() {
+  const list = document.getElementById("event-log-list");
+  if (!list) return;
+  const discovered = GlobalSystem.data.discoveredEvents || [];
+
+  list.innerHTML = CONFIG.events
+    .map((e) => {
+      if (!discovered.includes(e.id)) {
+        return `<div class="inv-item locked"><div class="inv-name">???</div><div class="inv-meta">尚未遭遇</div></div>`;
+      }
+      return `
+        <div class="inv-item">
+          <div>
+            <div class="inv-name">${e.icon} ${e.name}</div>
+            ${e.desc ? `<div class="inv-meta">${e.desc}</div>` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }

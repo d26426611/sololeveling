@@ -8,6 +8,7 @@ import { applySanityLoss } from "../state/playerStats.js";
 import { renderEventStage } from "../ui/eventScreen.js";
 import { renderMerchant } from "../ui/merchantPanel.js";
 import { toast } from "../ui/toast.js";
+import { GlobalSystem } from "../state/globalSystem.js";
 
 // game.js 在啟動時注入，避免 eventDirector.js <-> game.js 循環 import。
 let hooks = {
@@ -56,6 +57,7 @@ export const EventDirector = {
       }
       r -= e.weight;
     }
+    GlobalSystem.unlockEvent(picked.id);
     (this[picked.id] || this.trap).call(this);
   },
 
