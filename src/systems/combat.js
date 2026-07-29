@@ -323,6 +323,12 @@ export const BattleSystem = {
       logMessage(`因瘋狂而無法防禦！`, "sys");
     }
 
+    // 次元 Procedural Modifier（例如「傷害雙倍」）掛勾點：敵人傷害算完閃避/格擋/防禦之後、
+    // 扣血之前的最後調整層，跟玩家攻擊的 beforePlayerHit 對稱。
+    const beforeEnemyHitCtx = { dmg };
+    emit("beforeEnemyHit", beforeEnemyHitCtx);
+    dmg = beforeEnemyHitCtx.dmg;
+
     Player.currentHp -= dmg;
     updateBars(this.enemy);
     const blockTxt = blocked ? " <span class='val-crit'>(格擋!)</span>" : "";

@@ -11,6 +11,14 @@ export function resetModifiers() {
   modifiers.length = 0;
 }
 
+// 選擇性移除符合條件的 modifier，例如次元調整需要「一組一起註冊、一組一起解除」，
+// 不能整批 resetModifiers() 連 class/race/set 都清掉。
+export function unregisterModifiers(predicate) {
+  for (let i = modifiers.length - 1; i >= 0; i--) {
+    if (predicate(modifiers[i])) modifiers.splice(i, 1);
+  }
+}
+
 // 硬上限只在這裡套用一次，不管疊了幾個 modifier 進來，避免任何單一 modifier 需要自己
 // 顧慮「疊加後會不會爆表」。def/dodge/block 都是「機率型減傷」，上限跟 def 一致。
 const STAT_CAPS = { crit: 1.0, def: 0.9, dodge: 0.9, block: 0.9 };

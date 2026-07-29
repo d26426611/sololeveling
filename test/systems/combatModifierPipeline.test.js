@@ -1,8 +1,21 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { registerModifier, emit, resetModifiers } from "../../src/systems/combatModifierPipeline.js";
+import { registerModifier, emit, resetModifiers, unregisterModifiers } from "../../src/systems/combatModifierPipeline.js";
 
 beforeEach(() => resetModifiers());
+
+test("unregisterModifiers() removes only modifiers matching the predicate", () => {
+  let groupACalled = false;
+  let groupBCalled = false;
+  registerModifier({ id: "a", group: "groupA", source: "dimension", hook: "onTurnStart", apply: () => { groupACalled = true; } });
+  registerModifier({ id: "b", group: "groupB", source: "dimension", hook: "onTurnStart", apply: () => { groupBCalled = true; } });
+
+  unregisterModifiers((m) => m.group === "groupA");
+  emit("onTurnStart", {});
+
+  assert.equal(groupACalled, false);
+  assert.equal(groupBCalled, true);
+});
 
 test("resetModifiers() clears everything previously registered", () => {
   let called = false;
