@@ -6,6 +6,16 @@ export const events = [
     { id: "gambler", weight: 8, icon: "🎲", name: "瘋狂賭徒" },
     { id: "alchemist", weight: 8, icon: "🧪", name: "煉金術師" },
     { id: "trap", weight: 10, icon: "🪤", name: "陷阱" },
+    { id: "gem_vein", weight: 10, icon: "⛏️", name: "神秘礦脈" },
+    { id: "wounded_traveler", weight: 8, icon: "🤕", name: "受傷的旅人" },
+    { id: "ancient_statue", weight: 6, icon: "🗿", name: "遠古石像" },
+    {
+      id: "repentance_shrine",
+      weight: 4,
+      icon: "🕯️",
+      name: "懺悔神龕",
+      desc: "[煉獄] 獻上金幣以減輕業力的重擔。",
+    },
 
     // 特殊高階事件 (極低機率)
     {

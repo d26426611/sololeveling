@@ -22,7 +22,20 @@ export function configureEventDirector(injected) {
 }
 
 // 排除 chest：寶箱在 Game.nextDepth() 有自己獨立的機率分支，這裡只在「事件」分支內加權抽選。
-const WEIGHTED_EVENT_IDS = ["spring", "merchant", "crafting", "gambler", "alchemist", "trap", "demon_contract", "sanity_altar"];
+const WEIGHTED_EVENT_IDS = [
+  "spring",
+  "merchant",
+  "crafting",
+  "gambler",
+  "alchemist",
+  "trap",
+  "gem_vein",
+  "wounded_traveler",
+  "ancient_statue",
+  "repentance_shrine",
+  "demon_contract",
+  "sanity_altar",
+];
 
 // 從一組 key 裡挑符合條件的其中一個；沒有符合條件的就回傳 null，呼叫端自行決定 fallback。
 function randOfKeys(keys, predicate) {
@@ -222,6 +235,99 @@ export const EventDirector = {
         } else {
           Inventory.add({ id: Date.now() + Math.random(), type: "material", baseName: commonMat.name, ...commonMat, rarity: commonMat.rarity || "common" });
           toast(`撿到了 ${commonMat.name}`, "gain");
+        }
+        hooks.nextDepth();
+      }
+    );
+  },
+
+  gem_vein() {
+    renderEventStage(
+      "神秘礦脈",
+      "⛏️",
+      "<p>牆壁裂縫中透出微光，似乎藏著什麼。挖掘需要花點力氣，但也可能空手而歸。</p>",
+      `<button class="btn-primary" data-action="dig">挖掘</button><button class="btn-secondary" data-action="leave">離開</button>`,
+      (action) => {
+        if (action === "dig") {
+          const targetRarity = rollRarity(Player.depth || 0, Player.currentWorld);
+          const materialKeys = Object.keys(CONFIG.materials);
+          const key = randOfKeys(materialKeys, (k) => (CONFIG.materials[k].rarity || "common") === targetRarity) || materialKeys[0];
+          const mat = CONFIG.materials[key];
+          Inventory.add({ id: Date.now() + Math.random(), type: "material", baseName: mat.name, ...mat, rarity: mat.rarity || "common" });
+          const gold = Math.floor(Math.random() * 30) + 10;
+          Player.gold += gold;
+          toast(`挖到了 ${mat.name} 與 ${gold}G`, "gain");
+          updatePlayerPanel();
+        }
+        hooks.nextDepth();
+      }
+    );
+  },
+
+  wounded_traveler() {
+    renderEventStage(
+      "受傷的旅人",
+      "🤕",
+      "<p>一名渾身是傷的旅人倒在路邊，虛弱地向你求助。幫助他會分掉你一些體力，但他似乎願意用僅剩的財物答謝你。</p>",
+      `<button class="btn-primary" data-action="help">伸出援手</button><button class="btn-secondary" data-action="ignore">視而不見</button>`,
+      (action) => {
+        if (action === "help") {
+          const cost = Math.floor(Player.stats.maxHp * 0.05);
+          Player.currentHp = Math.max(1, Player.currentHp - cost);
+          const reward = 80 + Math.floor(Player.depth * 2);
+          Player.gold += reward;
+          toast(`你分擔了他的傷勢(-${cost} HP)，他塞給你 ${reward}G 表示感謝`, "gain");
+          updatePlayerPanel();
+        } else {
+          toast("你加快腳步，沒有回頭", "sys");
+        }
+        hooks.nextDepth();
+      }
+    );
+  },
+
+  ancient_statue() {
+    renderEventStage(
+      "遠古石像",
+      "🗿",
+      "<p>一座風化的石像矗立在此，雕工精細卻讓人心生不安。傳說觸碰石像會得到祝福，也可能招致詛咒。</p>",
+      `<button class="btn-primary" data-action="touch">觸碰石像</button><button class="btn-secondary" data-action="leave">敬而遠之</button>`,
+      (action) => {
+        if (action === "touch") {
+          if (Math.random() < 0.5) {
+            Player.baseStats.atk += 5;
+            toast("石像散發出溫暖的光芒：攻擊力永久 +5", "gain");
+          } else {
+            Player.baseStats.atk = Math.max(1, Player.baseStats.atk - 3);
+            toast("石像的眼中閃過寒光：攻擊力永久 -3", "warn");
+          }
+          recalcAndRefresh();
+        }
+        hooks.nextDepth();
+      }
+    );
+  },
+
+  repentance_shrine() {
+    const inPurgatory = Player.currentWorld === "purgatory";
+    const body = inPurgatory
+      ? `<p>一座刻滿懺悔者姓名的神龕，獻上金幣似乎能減輕肩上業力的重擔。</p><p>目前業力：<b>${Player.karma || 0}</b></p>`
+      : "<p>一座陌生信仰的神龕，靜靜地矗立著，對你的獻祭毫無反應。</p>";
+    renderEventStage(
+      "懺悔神龕",
+      "🕯️",
+      body,
+      `<button class="btn-primary" data-action="offer">獻上 50G</button><button class="btn-secondary" data-action="leave">離開</button>`,
+      (action) => {
+        if (action === "offer" && inPurgatory && Player.gold >= 50) {
+          Player.gold -= 50;
+          Player.karma = Math.max(0, (Player.karma || 0) - 20);
+          toast("業力減輕了一些", "gain");
+          updatePlayerPanel();
+        } else if (action === "offer" && inPurgatory) {
+          toast("金幣不足", "warn");
+        } else if (action === "offer") {
+          toast("神龕沒有回應", "sys");
         }
         hooks.nextDepth();
       }
