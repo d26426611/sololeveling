@@ -7,6 +7,7 @@ import { Inventory } from "../systems/inventory.js";
 import { ItemSystem } from "../systems/itemGenerator.js";
 import { BattleSystem, configureBattleSystem } from "../systems/combat.js";
 import { EventDirector, configureEventDirector } from "./eventDirector.js";
+import { registerClassStyleModifiers } from "./classStyleModifiers.js";
 import { renderSetup, getSetupSelection } from "../ui/setupScreen.js";
 import { renderEventStage, initEventControls } from "../ui/eventScreen.js";
 import { showEventScreen } from "../ui/screens.js";
@@ -37,6 +38,7 @@ function biomeIdByIndex(index) {
 export const Game = {
   init() {
     GlobalSystem.init();
+    registerClassStyleModifiers();
     renderSetup();
     initTabs();
     initEventControls();

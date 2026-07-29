@@ -8,6 +8,7 @@ import { showCombatScreen } from "../ui/screens.js";
 import { setEnemyDisplay, resetLog, logMessage, updateBars } from "../ui/combatScreen.js";
 import { updatePlayerPanel } from "../ui/playerPanel.js";
 import { toast } from "../ui/toast.js";
+import { emit } from "./combatModifierPipeline.js";
 
 // game.js 在啟動時透過 configureBattleSystem() 注入畫面流程回呼，避免 combat.js <-> game.js 循環 import。
 let hooks = {
@@ -157,11 +158,16 @@ export const BattleSystem = {
     } else if (mode === "ambush") {
       await this.enemyTurn();
       if (Player.currentHp <= 0) return this.lose();
-    } else if (mode === "normal" && CONFIG.classes[Player.class]?.style === "preemptive") {
+    } else if (mode === "normal") {
       // 弓手「先制」：正面迎戰時搶在正常回合順序前先攻一次。
-      logMessage(`${CONFIG.classes[Player.class].name}搶先出手！`, "sys");
-      await this.playerTurn();
-      if (this.enemy.currentHp <= 0) return this.win();
+      const style = CONFIG.classes[Player.class]?.style;
+      const startCtx = { style, mode, grantExtraTurn: false };
+      emit("onCombatStart", startCtx);
+      if (startCtx.grantExtraTurn) {
+        logMessage(`${CONFIG.classes[Player.class].name}搶先出手！`, "sys");
+        await this.playerTurn();
+        if (this.enemy.currentHp <= 0) return this.win();
+      }
     }
 
     while (this.active && Player.currentHp > 0 && this.enemy.currentHp > 0) {
@@ -205,7 +211,9 @@ export const BattleSystem = {
     // 模擬測試發現：牧師沒有任何攻擊加成，戰鬥回合數天生比其他職業長，3% 回復量完全跟不上
     // 拉長的戰鬥累積傷害，是唯一一個從沒贏過王的組合、且輸的margin都很小 —— 加重牧師的
     // 招牌機制（回復）而不是給它攻擊力，才不會模糊掉「續航型職業」的機制身分。
-    const regen = (Player.stats.hp_regen || 0) + (style === "regen" ? Math.ceil(Player.stats.maxHp * 0.06) : 0);
+    const turnStartCtx = { style, maxHp: Player.stats.maxHp, healAmount: 0, hits: 1, hitScale: 1 };
+    emit("onTurnStart", turnStartCtx);
+    const regen = (Player.stats.hp_regen || 0) + turnStartCtx.healAmount;
     if (regen > 0 && Player.currentHp < Player.stats.maxHp) {
       const healed = Math.min(regen, Player.stats.maxHp - Player.currentHp);
       Player.currentHp += healed;
@@ -213,8 +221,8 @@ export const BattleSystem = {
     }
 
     // 盜賊「連擊」/大魔導士「雙重詠唱」：一回合內攻擊兩次，每次傷害打折以免總傷害直接翻倍。
-    const hits = style === "multi_hit" || style === "double_cast" ? 2 : 1;
-    const hitScale = hits > 1 ? (style === "double_cast" ? 0.7 : 0.65) : 1;
+    const hits = turnStartCtx.hits;
+    const hitScale = turnStartCtx.hitScale;
 
     for (let i = 0; i < hits; i++) {
       this.resolveHit(mult * hitScale, style);
@@ -225,32 +233,26 @@ export const BattleSystem = {
 
   resolveHit(mult, style) {
     // 法師「必中」：捨棄較差的傷害浮動下限；賭徒「輪盤」：傷害浮動極端放大。
-    const rand = style === "true_strike" ? 1.0 + Math.random() * 0.1 : style === "roulette" ? 0.3 + Math.random() * 1.7 : 0.9 + Math.random() * 0.2;
+    const rollCtx = { style, rand: null };
+    emit("rollDamage", rollCtx);
+    const rand = rollCtx.rand ?? 0.9 + Math.random() * 0.2;
     let dmg = Math.floor(Player.stats.atk * mult * rand);
 
     const isCrit = Math.random() < Player.stats.crit;
     if (isCrit) dmg = Math.floor(dmg * (Player.stats.crit_dmg || 1.5));
 
-    // 狂戰士「血怒」：血量越低傷害越高。
-    if (style === "blood_rage") {
-      const hpPct = Player.currentHp / Player.stats.maxHp;
-      if (hpPct < 0.5) dmg = Math.floor(dmg * (1 + (0.5 - hpPct)));
-    }
-
-    // 聖騎士「愈戰愈強」：傷害隨戰鬥回合數累加，封頂 +30%。
-    if (style === "scaling_atk") {
-      dmg = Math.floor(dmg * (1 + Math.min(0.3, this.turnCount * 0.02)));
-    }
-
-    // 織夢者「操縱理智」：理智越低（越瘋狂），攻擊越強，僅幻界內生效。
-    if (style === "sanity_control" && Player.currentWorld === "phantasm") {
-      dmg = Math.floor(dmg * (1 + (1 - Player.sanity / 100) * 0.5));
-    }
-
-    // 地獄騎士「業火打擊」：把累積的業力轉化為額外真傷。
-    if (style === "karma_strike") {
-      dmg += Math.floor((Player.karma || 0) * 0.1);
-    }
+    // 狂戰士「血怒」/聖騎士「愈戰愈強」/織夢者「操縱理智」/地獄騎士「業火打擊」。
+    const beforeHitCtx = {
+      style,
+      dmg,
+      hpPct: Player.currentHp / Player.stats.maxHp,
+      turnCount: this.turnCount,
+      world: Player.currentWorld,
+      sanity: Player.sanity,
+      karma: Player.karma || 0,
+    };
+    emit("beforePlayerHit", beforeHitCtx);
+    dmg = beforeHitCtx.dmg;
 
     // 通用「真實傷害」屬性（火焰/沙暴/七宗罪套裝提供）：套裝資料裡定義了這個數值，
     // 但原本從沒被任何戰鬥邏輯讀取過，等於穿了也白穿。固定加在最終傷害之後，不受爆擊加成影響。
@@ -277,15 +279,21 @@ export const BattleSystem = {
       }
     }
 
-    // 暗影刺客「處決」：敵人殘血(<20%)時額外造成一擊真傷。
-    if (style === "execute" && this.enemy.currentHp > 0 && this.enemy.currentHp / this.enemy.maxHp < 0.2) {
-      const execDmg = Math.floor(this.enemy.maxHp * 0.15);
-      this.enemy.currentHp -= execDmg;
-      logMessage(`處決！額外造成 <span class='val-dmg'>${execDmg}</span> 傷害`, "p-atk");
+    // 暗影刺客「處決」/叢林遊俠「暈眩射擊」：兩者都只在敵人還活著時才有機會觸發。
+    const afterHitCtx = {
+      style,
+      enemyHp: this.enemy.currentHp,
+      enemyMaxHp: this.enemy.maxHp,
+      executeDmg: 0,
+      roll: Math.random(),
+      stunned: false,
+    };
+    emit("afterPlayerHit", afterHitCtx);
+    if (afterHitCtx.executeDmg > 0) {
+      this.enemy.currentHp -= afterHitCtx.executeDmg;
+      logMessage(`處決！額外造成 <span class='val-dmg'>${afterHitCtx.executeDmg}</span> 傷害`, "p-atk");
     }
-
-    // 叢林遊俠「暈眩射擊」：命中後有機率讓敵人下回合無法行動。
-    if (style === "stun_shot" && this.enemy.currentHp > 0 && Math.random() < 0.25) {
+    if (afterHitCtx.stunned) {
       this.enemyStunned = true;
       logMessage(`精準的箭矢讓 ${this.enemy.name} 踉蹌了一下！`, "sys");
     }
@@ -333,11 +341,12 @@ export const BattleSystem = {
 
     // 皇家騎士「反擊」：受到攻擊後有機率立即回敬一擊。
     const style = CONFIG.classes[Player.class]?.style;
-    if (style === "counter_attack" && Player.currentHp > 0 && Math.random() < 0.3) {
-      const counterDmg = Math.floor(Player.stats.atk * 0.5);
-      this.enemy.currentHp -= counterDmg;
+    const counterCtx = { style, playerHp: Player.currentHp, roll: Math.random(), atk: Player.stats.atk, counterDmg: 0 };
+    emit("afterEnemyHit", counterCtx);
+    if (counterCtx.counterDmg > 0) {
+      this.enemy.currentHp -= counterCtx.counterDmg;
       updateBars(this.enemy);
-      logMessage(`你反擊造成 <span class='val-dmg'>${counterDmg}</span> 傷害！`, "p-atk");
+      logMessage(`你反擊造成 <span class='val-dmg'>${counterCtx.counterDmg}</span> 傷害！`, "p-atk");
     }
   },
 
