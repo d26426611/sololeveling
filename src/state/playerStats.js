@@ -41,24 +41,9 @@ export function recalcPlayerStats() {
     if (item.setId) Player.activeSets[item.setId] = (Player.activeSets[item.setId] || 0) + 1;
   }
 
-  for (let sid in Player.activeSets) {
-    const cnt = Player.activeSets[sid];
-    const set = CONFIG.sets[sid];
-    if (!set) continue;
-    const apply = (bonus) => {
-      for (let k in bonus) {
-        if (k === "all_pct") {
-          s.atk = Math.floor(s.atk * (1 + bonus[k]));
-          s.maxHp = Math.floor(s.maxHp * (1 + bonus[k]));
-        } else {
-          s[k] = (s[k] || 0) + bonus[k];
-        }
-      }
-    };
-    if (cnt >= 2 && set.bonus2) apply(set.bonus2);
-    if (cnt >= 4 && set.bonus4) apply(set.bonus4);
-    if (cnt >= 6 && set.bonus6) apply(set.bonus6);
-  }
+  const setBonusCtx = { stats: s, activeSets: Player.activeSets, setConfig: CONFIG.sets };
+  emit("statCalculation", setBonusCtx);
+  s = setBonusCtx.stats;
 
   if (r) for (let k in r.mod) if (s[k]) s[k] = Math.floor(s[k] * r.mod[k]);
 

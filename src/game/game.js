@@ -9,6 +9,7 @@ import { BattleSystem, configureBattleSystem } from "../systems/combat.js";
 import { EventDirector, configureEventDirector } from "./eventDirector.js";
 import { registerClassStyleModifiers } from "./classStyleModifiers.js";
 import { registerRaceTraitModifiers } from "./raceTraitModifiers.js";
+import { registerSetBonusModifiers } from "./setBonusModifiers.js";
 import { renderSetup, getSetupSelection } from "../ui/setupScreen.js";
 import { renderEventStage, initEventControls } from "../ui/eventScreen.js";
 import { showEventScreen } from "../ui/screens.js";
@@ -41,6 +42,7 @@ export const Game = {
     GlobalSystem.init();
     registerClassStyleModifiers();
     registerRaceTraitModifiers();
+    registerSetBonusModifiers();
     renderSetup();
     initTabs();
     initEventControls();
