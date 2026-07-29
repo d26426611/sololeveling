@@ -1,4 +1,4 @@
-import { CONFIG } from "../data/index.js";
+import { CONFIG, rollRarity } from "../data/index.js";
 import { Player } from "../state/player.js";
 import { Inventory } from "../systems/inventory.js";
 import { ItemSystem } from "../systems/itemGenerator.js";
@@ -23,6 +23,13 @@ export function configureEventDirector(injected) {
 
 // 排除 chest：寶箱在 Game.nextDepth() 有自己獨立的機率分支，這裡只在「事件」分支內加權抽選。
 const WEIGHTED_EVENT_IDS = ["spring", "merchant", "crafting", "gambler", "alchemist", "trap", "demon_contract", "sanity_altar"];
+
+// 從一組 key 裡挑符合條件的其中一個；沒有符合條件的就回傳 null，呼叫端自行決定 fallback。
+function randOfKeys(keys, predicate) {
+  const pool = keys.filter(predicate);
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 
 export const EventDirector = {
   checkAwakening() {
@@ -139,16 +146,20 @@ export const EventDirector = {
   },
 
   demon_contract() {
+    const karma = Player.karma || 0;
     renderEventStage(
       "惡魔契約",
       "📜",
-      "<p>陰影中傳來低語：「獻上你的靈魂，換取力量吧...」<br>接受後，死亡時你將不會真正消逝，而是墮入煉獄。</p>",
-      `<button class="btn-danger" data-action="accept">接受</button><button class="btn-secondary" data-action="reject">拒絕</button>`,
+      `<p>陰影中傳來低語：「獻上你的靈魂，換取力量吧...」惡魔的眼中閃過算計的光——你已經背負了 <b>${karma}</b> 點業力，它似乎格外中意你。</p>
+       <p>接受後，死亡時你將不會真正消逝，而是墮入無間煉獄，用永劫的刑罰償還這份契約。</p>`,
+      `<button class="btn-danger" data-action="accept">簽下契約</button><button class="btn-secondary" data-action="reject">轉身離去</button>`,
       (action) => {
         if (action === "accept") {
           Player.flags.mark_of_sin = true;
           recalcAndRefresh();
-          toast("獲得【罪惡印記】", "warn");
+          toast("獲得【罪惡印記】：死亡不再是終點，而是墮入煉獄的開始", "warn");
+        } else {
+          toast("你別過頭，假裝沒聽見那陣低語", "sys");
         }
         hooks.nextDepth();
       }
@@ -158,30 +169,62 @@ export const EventDirector = {
   sanity_altar() {
     const inPhantasm = Player.currentWorld === "phantasm";
     const body = inPhantasm
-      ? "<p>祭壇上刻著無法理解的符文，獻上理智似乎能換取禁忌的知識。</p>"
-      : "<p>一座蒙塵的祭壇，似乎需要更深的瘋狂才能發揮作用...</p>";
-    renderEventStage("理智祭壇", "🧠", body, `<button class="btn-primary" data-action="offer">獻祭</button><button class="btn-secondary" data-action="leave">離開</button>`, (action) => {
-      if (action === "offer" && inPhantasm) {
-        applySanityLoss(20);
-        const item = ItemSystem.generate();
-        Inventory.add(item);
-        updatePlayerPanel();
-      } else if (action === "offer") {
-        toast("祭壇沒有反應...", "warn");
+      ? `<p>祭壇上刻著無法理解的符文，隨著你的凝視緩緩扭曲。獻上理智似乎能換取禁忌的知識與力量，但瘋狂的代價從不打折。</p>
+         <p>目前理智：<b>${Player.sanity}</b>/100</p>`
+      : "<p>一座蒙塵的祭壇，符文早已風化，似乎需要更深的瘋狂才能發揮作用。你伸手觸碰了一下冰冷的石面。</p>";
+    renderEventStage(
+      "理智祭壇",
+      "🧠",
+      body,
+      `<button class="btn-primary" data-action="offer">獻祭理智</button><button class="btn-secondary" data-action="leave">轉身離開</button>`,
+      (action) => {
+        if (action === "offer" && inPhantasm) {
+          applySanityLoss(20);
+          const item = ItemSystem.generate();
+          Inventory.add(item);
+          toast(`祭壇低語著禁忌的知識，你獲得了 ${item.name}`, "gain");
+          updatePlayerPanel();
+        } else if (action === "offer") {
+          const dmg = Math.floor(Player.stats.maxHp * 0.05);
+          Player.currentHp = Math.max(1, Player.currentHp - dmg);
+          toast(`一股寒意竄過全身，你受到了 ${dmg} 點傷害——這座祭壇尚未甦醒`, "warn");
+          updatePlayerPanel();
+        }
+        hooks.nextDepth();
       }
-      hooks.nextDepth();
-    });
+    );
   },
 
   crafting() {
-    const mat = Object.values(CONFIG.materials)[Math.floor(Math.random() * Object.values(CONFIG.materials).length)];
-    Inventory.add({ id: Date.now() + Math.random(), type: "material", baseName: mat.name, ...mat, rarity: mat.rarity || "common" });
+    const materialKeys = Object.keys(CONFIG.materials);
+    const commonKey = randOfKeys(materialKeys, (k) => (CONFIG.materials[k].rarity || "common") === "common") || materialKeys[0];
+    const commonMat = CONFIG.materials[commonKey];
+
     renderEventStage(
       "廢棄工作台",
       "⚒️",
-      `<p>你在廢棄的工作台上找到了一些殘留的素材：<b>${mat.name}</b>。<br>回到「合成」分頁即可查看可用配方。</p>`,
-      `<button class="btn-primary" data-action="continue">離開</button>`,
-      () => hooks.nextDepth()
+      `<p>一座廢棄的工作台，上面散落著殘留的素材。你可以隨手撿起看得見的東西，或是花點時間仔細翻找——但翻找可能會被銳利的殘骸割傷。</p>`,
+      `<button class="btn-secondary" data-action="quick">隨手撿起</button><button class="btn-primary" data-action="search">仔細翻找</button>`,
+      (action) => {
+        if (action === "search") {
+          if (Math.random() < 0.7) {
+            const targetRarity = rollRarity((Player.depth || 0) + 20, Player.currentWorld);
+            const key = randOfKeys(materialKeys, (k) => (CONFIG.materials[k].rarity || "common") === targetRarity) || commonKey;
+            const mat = CONFIG.materials[key];
+            Inventory.add({ id: Date.now() + Math.random(), type: "material", baseName: mat.name, ...mat, rarity: mat.rarity || "common" });
+            toast(`翻找到了品質更好的素材：${mat.name}`, "gain");
+          } else {
+            const dmg = 5 + Math.floor(Player.depth * 0.3);
+            Player.currentHp = Math.max(1, Player.currentHp - dmg);
+            toast(`被銳利的殘骸割傷，受到 ${dmg} 點傷害，但兩手空空`, "warn");
+            updatePlayerPanel();
+          }
+        } else {
+          Inventory.add({ id: Date.now() + Math.random(), type: "material", baseName: commonMat.name, ...commonMat, rarity: commonMat.rarity || "common" });
+          toast(`撿到了 ${commonMat.name}`, "gain");
+        }
+        hooks.nextDepth();
+      }
     );
   },
 
