@@ -348,6 +348,13 @@ button:disabled {
   font-size: 0.8em;
   color: #888;
 }
+.inv-item.locked {
+  opacity: 0.5;
+  border: 1px dashed var(--border);
+}
+.inv-item.locked .inv-name {
+  color: #777;
+}
 
 /* 右側面板 */
 #action-panel {

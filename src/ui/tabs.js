@@ -2,12 +2,14 @@ import { renderInventory } from "./inventoryPanel.js";
 import { renderCrafting } from "./craftingPanel.js";
 import { renderBlacksmith } from "./blacksmithPanel.js";
 import { renderCompendium } from "./compendiumPanel.js";
+import { renderAchievements } from "./achievementPanel.js";
 
 const renderers = {
   inventory: () => renderInventory(),
   crafting: () => renderCrafting(),
   blacksmith: () => renderBlacksmith(),
   compendium: () => renderCompendium(),
+  achievements: () => renderAchievements(),
   system: () => {},
 };
 

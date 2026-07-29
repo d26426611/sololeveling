@@ -160,6 +160,8 @@ export const Game = {
     if (isRiftActive()) tickRift();
     else rollForRift();
 
+    GlobalSystem.checkDepthMilestones(Player.depth, toast);
+
     if (Player.currentWorld === "phantasm") applySanityLoss(1);
 
     // 模擬測試發現：舊版每層固定回 5 點血，在 maxHp 已經是 150~500 的正常進度下根本無感，
@@ -275,8 +277,9 @@ export const Game = {
       if (item && (!best || (RARITY_RANK[item.rarity] || 0) > (RARITY_RANK[best.rarity] || 0))) best = item;
     }
     if (best) GlobalSystem.storeLegacyItem(best);
+    GlobalSystem.unlockAchievement("death_legacy", toast);
     const finalDepth = Player.depth;
-    const unlocked = GlobalSystem.unlockLegacyByDepth(finalDepth);
+    const unlocked = GlobalSystem.unlockLegacyByDepth(finalDepth, toast);
 
     localStorage.removeItem(StorageSystem.SAVE_KEY);
     resetPlayer();

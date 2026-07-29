@@ -9,6 +9,7 @@ import { setEnemyDisplay, resetLog, logMessage, updateBars } from "../ui/combatS
 import { updatePlayerPanel } from "../ui/playerPanel.js";
 import { toast } from "../ui/toast.js";
 import { emit } from "./combatModifierPipeline.js";
+import { GlobalSystem } from "../state/globalSystem.js";
 
 // game.js 在啟動時透過 configureBattleSystem() 注入畫面流程回呼，避免 combat.js <-> game.js 循環 import。
 let hooks = {
@@ -359,6 +360,9 @@ export const BattleSystem = {
   win() {
     this.active = false;
     let dropTxt = "";
+
+    GlobalSystem.unlockAchievement("first_kill", toast);
+    if (this.enemy.isBoss) GlobalSystem.unlockAchievement("first_boss", toast);
 
     // 通用「金幣加成」屬性（豪商職業提供 +0.5）：原本 win() 硬寫死判斷 style==='money_power'
     // 給固定 1.5 倍，卻完全沒讀 Player.stats.gold_drop 這個通用欄位本身，等於職業加成的

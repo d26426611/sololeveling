@@ -44,6 +44,7 @@ export const Inventory = {
     Player.equipment[slot] = item;
     this.remove(id);
     recalcPlayerStats();
+    GlobalSystem.checkFullSet(Player.activeSets, toast);
   },
 
   unequip(slot) {

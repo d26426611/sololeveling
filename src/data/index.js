@@ -9,6 +9,7 @@ import { materials } from "./materials.js";
 import { events } from "./events.js";
 import { rarity } from "./rarity.js";
 import { affixes } from "./affixes.js";
+import { achievements } from "./achievements.js";
 
 // 保留舊版扁平 CONFIG 形狀，讓其它系統可以直接用 CONFIG.races / CONFIG.sets 等既有寫法存取。
 export const CONFIG = {
@@ -23,6 +24,7 @@ export const CONFIG = {
   events,
   rarity,
   affixes,
+  achievements,
 };
 
 export { rollRarity } from "./rarity.js";
