@@ -1,6 +1,8 @@
 import { CONFIG, rollRarity } from "../data/index.js";
 import { Player } from "../state/player.js";
 import { weaponSubtypes } from "../data/weaponSubtypes.js";
+import { armorSubtypes, inferArmorSubtype } from "../data/armorSubtypes.js";
+import { accessorySubtypes, inferAccessorySubtype } from "../data/accessorySubtypes.js";
 
 const ELITE_POOL_KEY = "wolf_pack";
 
@@ -108,6 +110,26 @@ export const ItemSystem = {
       if (profile.critFlat) item.stats.crit = (item.stats.crit || 0) + profile.critFlat;
       if (profile.critDmgFlat) item.stats.crit_dmg = (item.stats.crit_dmg || 0) + profile.critDmgFlat;
       if (profile.blockFlat) item.stats.block = (item.stats.block || 0) + profile.blockFlat;
+    }
+
+    // 防具子類型身分修正：跟武器子類型同一精神，讓「厚重 vs 輕盈 vs 守護」不再只靠
+    // baseHp/baseSpd 數字大小比較，而是有清楚的定位取捨。
+    if (item.type === "armor_upper" || item.type === "armor_lower") {
+      item.subtype = inferArmorSubtype(base);
+      const profile = armorSubtypes[item.subtype];
+      if (profile.hpMult !== undefined && item.stats.maxHp) item.stats.maxHp = Math.round(item.stats.maxHp * profile.hpMult);
+      if (profile.speedFlat) item.stats.speed = (item.stats.speed || 0) + profile.speedFlat;
+      if (profile.defFlat) item.stats.def = (item.stats.def || 0) + profile.defFlat;
+    }
+
+    // 飾品子類型身分修正：utility 路線不追求原始數值放大，而是換取額外機制(爆擊/金幣加成)。
+    if (item.type === "accessory") {
+      item.subtype = inferAccessorySubtype(base);
+      const profile = accessorySubtypes[item.subtype];
+      if (profile.atkMult !== undefined && item.stats.atk) item.stats.atk = Math.round(item.stats.atk * profile.atkMult);
+      if (profile.hpMult !== undefined && item.stats.maxHp) item.stats.maxHp = Math.round(item.stats.maxHp * profile.hpMult);
+      if (profile.critFlat) item.stats.crit = (item.stats.crit || 0) + profile.critFlat;
+      if (profile.goldDropFlat) item.stats.gold_drop = (item.stats.gold_drop || 1.0) + profile.goldDropFlat;
     }
 
     const rInfo = CONFIG.rarity[rarity];
