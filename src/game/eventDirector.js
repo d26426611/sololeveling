@@ -15,7 +15,13 @@ let hooks = {
   nextDepth: () => {},
   enterWorld: () => {},
   gameOver: () => {},
+  offerAwakening: () => {},
 };
+
+// 賭徒職業「運氣決定一切」，理所當然只能靠賭博本身的好運轉職，而不是靠某個可預期的數值門檻
+// 達成——data/classes.js 裡 gambler.unlockCheck 刻意寫死 false，正是為了避免它被 checkAwakening()
+// 的一般門檻機制誤解鎖，實際轉職路徑就是這裡：贏得賭局後，運氣夠好就有機會覺醒。
+const GAMBLER_AWAKENING_CHANCE_ON_WIN = 0.25;
 
 export function configureEventDirector(injected) {
   hooks = { ...hooks, ...injected };
@@ -123,10 +129,17 @@ export const EventDirector = {
           if (Math.random() < 0.5) {
             Player.gold += 250;
             toast("贏了！", "gain");
+            updatePlayerPanel();
+
+            const gamblerLocked = !GlobalSystem.data.unlockedClasses.includes("gambler") && Player.class !== "gambler" && !Player.flags.rej_gambler;
+            if (gamblerLocked && Math.random() < GAMBLER_AWAKENING_CHANCE_ON_WIN) {
+              hooks.offerAwakening("gambler");
+              return;
+            }
           } else {
             toast("輸了", "warn");
+            updatePlayerPanel();
           }
-          updatePlayerPanel();
         }
         hooks.nextDepth();
       }

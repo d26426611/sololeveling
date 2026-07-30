@@ -64,6 +64,7 @@ export const Game = {
       nextDepth: () => this.nextDepth(),
       enterWorld: (w) => this.enterWorld(w),
       gameOver: () => this.gameOver(),
+      offerAwakening: (classId) => this.offerAwakening(classId),
     });
 
     document.addEventListener("game:enter-world", (e) => this.enterWorld(e.detail));
