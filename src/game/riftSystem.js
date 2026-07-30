@@ -67,3 +67,11 @@ export function tickRift() {
   Player.rift.floorsRemaining--;
   if (Player.rift.floorsRemaining <= 0) expireRift();
 }
+
+// 存檔讀取後呼叫：Player.rift 這個「正身處 Rift」的旗標本身會正常序列化/還原(純資料)，
+// 但它實際生效的 dimension modifier 只活在記憶體裡的 pipeline，不會隨存檔一起存下來。
+// 讀檔後如果不重新註冊，玩家會卡在「State 顯示身處 Rift、但效果已經消失」的狀態——
+// 讀檔流程必須呼叫這個函式，讓進行中的 Rift 效果重新掛回 pipeline。
+export function rehydrateRift() {
+  if (Player.rift) activateDimensionModifier(Player.rift.modifierId);
+}

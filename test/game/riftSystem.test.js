@@ -10,6 +10,7 @@ import {
   triggerRift,
   tickRift,
   rollForRift,
+  rehydrateRift,
 } from "../../src/game/riftSystem.js";
 
 beforeEach(() => {
@@ -144,4 +145,29 @@ test("rollForRift() never triggers outside the endless loop, even with a guarant
   } finally {
     Math.random = originalRandom;
   }
+});
+
+test("rehydrateRift() re-registers an in-progress rift's dimension modifier after a save/load cycle wiped the in-memory pipeline", () => {
+  setEndlessLoopState();
+  triggerRift("purgatory", "war_zone");
+
+  // Simulate what a page reload does: Player.rift survives (it's plain serialized data),
+  // but the pipeline's registered modifiers are gone since they only ever lived in memory.
+  resetModifiers();
+  const ctx = { style: null, dmg: 100 };
+  emit("beforePlayerHit", ctx);
+  assert.equal(ctx.dmg, 100, "sanity check: the modifier really is gone after resetModifiers()");
+
+  rehydrateRift();
+
+  const ctxAfter = { style: null, dmg: 100 };
+  emit("beforePlayerHit", ctxAfter);
+  assert.equal(ctxAfter.dmg, 200, "war_zone's modifier should be re-registered and active again");
+});
+
+test("rehydrateRift() is a no-op when no rift is active", () => {
+  assert.doesNotThrow(() => rehydrateRift());
+  const ctx = { style: null, dmg: 100 };
+  emit("beforePlayerHit", ctx);
+  assert.equal(ctx.dmg, 100);
 });

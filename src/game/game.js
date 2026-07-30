@@ -10,7 +10,7 @@ import { EventDirector, configureEventDirector } from "./eventDirector.js";
 import { registerClassStyleModifiers } from "./classStyleModifiers.js";
 import { registerRaceTraitModifiers } from "./raceTraitModifiers.js";
 import { registerSetBonusModifiers } from "./setBonusModifiers.js";
-import { isRiftActive, tickRift, rollForRift } from "./riftSystem.js";
+import { isRiftActive, tickRift, rollForRift, rehydrateRift } from "./riftSystem.js";
 import { renderSetup, getSetupSelection } from "../ui/setupScreen.js";
 import { renderEventStage, initEventControls } from "../ui/eventScreen.js";
 import { showEventScreen } from "../ui/screens.js";
@@ -75,6 +75,7 @@ export const Game = {
       loadBtn.style.display = "inline-block";
       loadBtn.onclick = () => {
         if (StorageSystem.loadGame()) {
+          rehydrateRift();
           recalcPlayerStats();
           document.getElementById("setup-screen").style.display = "none";
           document.getElementById("app").style.display = "grid";
