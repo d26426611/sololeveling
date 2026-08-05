@@ -31,6 +31,24 @@ function pickWeighted(weights) {
  * 用 sqrt 而非線性讓早期(depth 0~20)爬升更快 —— 玩家反應前期太難拿到有感的裝備提升，
  * sqrt 曲線在深度 10~20 就能摸到 uncommon/rare，深度 120 後收斂到跟線性版一樣的終值分佈。
  */
+/**
+ * 模擬驗證發現：稀有度機率曲線在 depth 120 封頂之後就固定在終值分佈(common 40%~legendary 5%)，
+ * 期望倍率封頂在約 1.35x，永遠不再成長——但怪物 baseHp/baseAtk 是跨區域逐一設計成大約 1.8x
+ * 級距爬升(見 ADR-0004)，而且沒有封頂。兩條曲線一個停在原地、一個持續爬升，跨過 depth 120
+ * (森林/洞穴交界附近)之後裝備成長完全跟不上怪物成長，越晚期的區域越像撞牆——這不是單一怪物
+ * 數值抄錯，是整個「稀有度機率曲線」跟「怪物數值曲線」的成長速率從設計上就不匹配。
+ *
+ * 這裡加一個獨立於稀有度機率之外的「深度動力倍率」：depth<=120 維持 1.0（早期平衡已經驗證過，
+ * 不動它），超過 120 之後用跟怪物同樣的「每區域約 1.8x」速率持續成長(用連續的 (depth-120)/50
+ * 而非整數樓層數，讓成長感是平滑爬升，不是每跨一個區域邊界就頓一下)。跟稀有度倍率是相乘關係、
+ * 各自獨立，不影響稀有度機率本身怎麼骰。
+ */
+export function depthPowerScale(depth) {
+  if (depth <= 120) return 1.0;
+  const regionsPast = (depth - 120) / 50;
+  return Math.pow(2.5, regionsPast);
+}
+
 export function rollRarity(depth, world) {
   if (world === "purgatory") {
     return Math.random() < 0.2 ? "abyssal" : "legendary";

@@ -27,4 +27,4 @@ export const CONFIG = {
   achievements,
 };
 
-export { rollRarity } from "./rarity.js";
+export { rollRarity, depthPowerScale } from "./rarity.js";

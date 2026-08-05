@@ -1,4 +1,4 @@
-import { CONFIG, rollRarity } from "../data/index.js";
+import { CONFIG, rollRarity, depthPowerScale } from "../data/index.js";
 import { Player } from "../state/player.js";
 import { weaponSubtypes } from "../data/weaponSubtypes.js";
 import { armorSubtypes, inferArmorSubtype } from "../data/armorSubtypes.js";
@@ -133,7 +133,10 @@ export const ItemSystem = {
     }
 
     const rInfo = CONFIG.rarity[rarity];
-    const mult = hasPresetRarity ? 1.0 : rInfo ? rInfo.mult : 1.0;
+    // depthPowerScale：稀有度機率曲線在 depth 120 封頂後不再成長，但怪物數值持續跨區域爬升
+    // (見 rarity.js 的說明)，跟 hasPresetRarity 一樣的邏輯——已經手動調好最終數值的預設稀有度
+    // 物品不套用，避免又是一次「同一個級距算兩次」。
+    const mult = hasPresetRarity ? 1.0 : (rInfo ? rInfo.mult : 1.0) * depthPowerScale(depth);
     for (let k in item.stats) {
       if (!["def", "crit", "dodge", "block", "crit_dmg"].includes(k)) {
         item.stats[k] = Math.floor(item.stats[k] * mult);
