@@ -605,13 +605,27 @@ export const monsters = {
     },
 
     // === 煉獄專屬 (Purgatory) ===
+    // 模擬測試發現：這個世界只能透過「業力印記死亡」進入(見 game.js enterWorld())，而業力印記
+    // 從惡魔契約事件取得完全沒有深度門檻——玩家可能在深度 10 就簽下契約，之後在任何深度死亡
+    // 都會直接被丟進煉獄，而不是進入無盡循環才有機會遇到。舊數值(baseHp 萬級/baseAtk 千級)
+    // 完全沒套用過 ADR-0004 的區域相對難度校準，用同一套 depthScale 公式試算後，
+    // 從深度 10 到深度 320 的每一個進入點都是「敵人一擊必殺、要打 300~1400 下才能反殺」的
+    // 無條件即死陷阱。以「玩家死亡進入煉獄」為場景，用跟 ADR-0004 相同的反推方法論重新校準：
+    // 挑一個代表性的參考深度(150)，反推出「一般怪 4 下殺死、玩家可以扛 12 下」「菁英 8 下/8 下」
+    // 這種有風險但打得過的目標，再用原本資料裡怪物彼此的相對倍率套回其他 3 隻一般怪跟另一隻
+    // 菁英，並在深度 10~320 全範圍重新驗證。gold/speed 維持原樣，只調 hp/atk。
+    // 王另外處理：depthScale 的 priorJourneyDepth 項會隨死亡深度無上限成長，但裝備品質大約
+    // depth 120 後就收斂(見 rarity.js)，用跟一般怪同樣緊的目標(13下/6下)校準王，會在深度
+    // 200+ 死亡時變成幾乎打不贏(模擬驗證：勝率從深度10的47%一路掉到深度320的0%)——這是比
+    // 「單一數值抄錯」更底層的公式特性，目前只在王身上刻意放寬容錯（目標放鬆為10下/9下），
+    // 沒有動 depthScale 公式本身，也還沒去確認無盡循環裡沙漠王是否有同樣的長期磨損問題。
     tortured_soul: {
       name: "受折磨的靈魂",
       icon: "👻",
       species: "undead",
       type: "common",
-      baseHp: 10000,
-      baseAtk: 2000,
+      baseHp: 56,
+      baseAtk: 16,
       speed: 90,
       gold: 500,
       mat: "sin_dust",
@@ -622,8 +636,8 @@ export const monsters = {
       icon: "👺",
       species: "demon",
       type: "common",
-      baseHp: 15000,
-      baseAtk: 2500,
+      baseHp: 84,
+      baseAtk: 20,
       speed: 110,
       gold: 800,
       mat: "demon_horn",
@@ -634,8 +648,8 @@ export const monsters = {
       icon: "🐗",
       species: "beast",
       type: "common",
-      baseHp: 25000,
-      baseAtk: 3000,
+      baseHp: 140,
+      baseAtk: 24,
       speed: 80,
       gold: 1000,
       mat: "hell_leather",
@@ -646,8 +660,8 @@ export const monsters = {
       icon: "💋",
       species: "demon",
       type: "common",
-      baseHp: 12000,
-      baseAtk: 3500,
+      baseHp: 67,
+      baseAtk: 28,
       speed: 130,
       gold: 1200,
       mat: "demon_horn",
@@ -659,8 +673,8 @@ export const monsters = {
       icon: "🦇",
       species: "demon",
       type: "elite",
-      baseHp: 100000,
-      baseAtk: 8000,
+      baseHp: 384,
+      baseAtk: 68,
       speed: 150,
       gold: 5000,
       mat: "black_feather",
@@ -671,8 +685,8 @@ export const monsters = {
       icon: "👅",
       species: "demon",
       type: "elite",
-      baseHp: 150000,
-      baseAtk: 6000,
+      baseHp: 576,
+      baseAtk: 51,
       speed: 60,
       gold: 8000,
       mat: "sin_dust",
@@ -683,8 +697,8 @@ export const monsters = {
       name: "路西法·傲慢化身",
       icon: "🌞",
       type: "boss",
-      baseHp: 1000000,
-      baseAtk: 20000,
+      baseHp: 686,
+      baseAtk: 77,
       speed: 200,
       gold: 100000,
       mat: "pride_crown",
@@ -714,13 +728,19 @@ export const monsters = {
     },
 
     // === 幻界專屬 (Phantasm) ===
+    // 跟煉獄同一輪校準（見上方 tortured_soul 的說明）：底層公式、玩家能力、進入方式都相同，
+    // 一般怪/菁英直接沿用同一個反推基準值。王原本維持原資料裡「克蘇魯是路西法的兩倍」，
+    // 但套用煉獄王同樣的實測後發現 2 倍疊加在王本身已經很緊繃的容錯上，會讓幻界王在幾乎
+    // 任何深度都打不贏（模擬 30 次全部落敗）——改成溫和一點的 1.3 倍，維持「幻界比煉獄更難」
+    // 的既有設計方向，但不到打不過的程度。幻界之鑰的合成材料稀有度天然把入場門檻推到較深的
+    // 樓層，風險不像煉獄那麼緊急，但數值本身有一樣的問題，一併修正。
     tentacle_horror: {
       name: "觸手恐怖",
       icon: "🦑",
       species: "aberration",
       type: "common",
-      baseHp: 12000,
-      baseAtk: 2200,
+      baseHp: 56,
+      baseAtk: 16,
       speed: 100,
       gold: 600,
       mat: "void_slime",
@@ -731,8 +751,8 @@ export const monsters = {
       icon: "👽",
       species: "aberration",
       type: "common",
-      baseHp: 18000,
-      baseAtk: 2800,
+      baseHp: 84,
+      baseAtk: 20,
       speed: 130,
       gold: 900,
       mat: "star_dust",
@@ -743,8 +763,8 @@ export const monsters = {
       icon: "🧠",
       species: "aberration",
       type: "common",
-      baseHp: 15000,
-      baseAtk: 3000,
+      baseHp: 70,
+      baseAtk: 22,
       speed: 110,
       gold: 800,
       mat: "void_slime",
@@ -755,8 +775,8 @@ export const monsters = {
       icon: "🌑",
       species: "aberration",
       type: "common",
-      baseHp: 14000,
-      baseAtk: 3200,
+      baseHp: 65,
+      baseAtk: 23,
       speed: 160,
       gold: 1000,
       mat: "void_slime",
@@ -768,8 +788,8 @@ export const monsters = {
       icon: "⚫",
       species: "aberration",
       type: "elite",
-      baseHp: 200000,
-      baseAtk: 5000,
+      baseHp: 512,
+      baseAtk: 57,
       speed: 50,
       gold: 6000,
       mat: "void_slime",
@@ -780,8 +800,8 @@ export const monsters = {
       icon: "🐟",
       species: "aberration",
       type: "elite",
-      baseHp: 150000,
-      baseAtk: 6000,
+      baseHp: 384,
+      baseAtk: 68,
       speed: 140,
       gold: 8000,
       mat: "void_slime",
@@ -792,8 +812,8 @@ export const monsters = {
       name: "克蘇魯·沉睡之神",
       icon: "🐙",
       type: "boss",
-      baseHp: 2000000,
-      baseAtk: 30000,
+      baseHp: 892,
+      baseAtk: 100,
       speed: 100,
       gold: 200000,
       mat: "elder_sign",
